@@ -17,7 +17,7 @@ An autonomous agent that processes Jira tickets and implements code changes usin
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/jira-agent
+git clone https://github.com/djayatillake/jira-agent
 cd jira-agent
 
 # Install dependencies
@@ -39,13 +39,16 @@ export ANTHROPIC_API_KEY="your-api-key"
 export JIRA_AGENT_JIRA_OAUTH_CLIENT_ID="your-client-id"
 export JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
 
-# GitHub (create token at https://github.com/settings/tokens)
-export JIRA_AGENT_GITHUB_TOKEN="your-github-token"
+# GitHub - auto-detected from `gh` CLI if you're logged in!
+# Only set this if you want to use a different token:
+# export JIRA_AGENT_GITHUB_TOKEN="your-github-token"
 
 # Optional: Databricks
 export JIRA_AGENT_DATABRICKS_HOST="https://your-workspace.databricks.com"
 export JIRA_AGENT_DATABRICKS_TOKEN="your-databricks-token"
 ```
+
+**Note:** If you're authenticated with `gh` CLI (`gh auth login`), the agent will automatically use that token for GitHub operations. No need to set `JIRA_AGENT_GITHUB_TOKEN`.
 
 2. Create a repository configuration:
 

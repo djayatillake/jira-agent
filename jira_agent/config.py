@@ -1,10 +1,30 @@
 """Global agent configuration."""
 
-import os
+import subprocess
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_gh_cli_token() -> str:
+    """Get GitHub token from gh CLI if available.
+
+    Returns:
+        GitHub token or empty string if not available.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return ""
 
 
 class AgentSettings(BaseSettings):
@@ -35,8 +55,11 @@ class AgentSettings(BaseSettings):
     jira_oauth_client_id: str = Field(default="", description="Jira OAuth 2.0 client ID")
     jira_oauth_client_secret: str = Field(default="", description="Jira OAuth 2.0 client secret")
 
-    # GitHub configuration
-    github_token: str = Field(default="", description="GitHub personal access token")
+    # GitHub configuration (falls back to gh CLI token if not set)
+    github_token: str = Field(
+        default_factory=get_gh_cli_token,
+        description="GitHub token (auto-detected from gh CLI if not set)",
+    )
 
     # Databricks configuration
     databricks_host: str = Field(default="", description="Databricks workspace host URL")
