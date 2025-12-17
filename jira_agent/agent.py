@@ -12,6 +12,8 @@ from .auth import AuthManager
 from .clients.github_client import GitHubClient, format_pr_status
 from .clients.jira_client import JiraClient, extract_text_from_adf, format_issue_summary
 from .config import AgentSettings
+from .environment import EnvironmentChecker, PackageInstaller, RepoRequirements
+from .environment.requirements import RequirementsParser
 from .learning import LearningCapture, detect_failure_type, is_failure_output
 from .repo_config.schema import RepoConfig
 from .tools.git_tools import GitTools, format_branch_name
@@ -72,6 +74,102 @@ class JiraAgent:
             token = self.auth.github.get_access_token()
             self._git_tools = GitTools(self.settings.workspace_dir, token)
         return self._git_tools
+
+    async def check_environment(
+        self,
+        repo_path: Path,
+        auto_install: bool = False,
+        ticket_logger: TicketLogger | None = None,
+    ) -> dict[str, Any]:
+        """Check and optionally set up environment for the repository.
+
+        Args:
+            repo_path: Path to the cloned repository.
+            auto_install: If True, automatically install missing dependencies.
+            ticket_logger: Optional logger for the ticket.
+
+        Returns:
+            Dict with 'ready' bool and 'issues' list.
+        """
+        log = ticket_logger or logger
+        issues = []
+
+        # Check system tools
+        log.info("Checking system environment...")
+        checker = EnvironmentChecker()
+        report = checker.check_for_repo(repo_path, self.repo_config)
+
+        if report.missing_required:
+            log.warning(f"Missing required tools: {', '.join(report.missing_required)}")
+
+            if auto_install:
+                installer = PackageInstaller(repo_path, auto_confirm=True)
+                for tool in report.missing_required:
+                    log.info(f"Installing {tool}...")
+                    result = installer.install_system_tool(tool)
+                    if result.success:
+                        log.info(f"Installed {tool}")
+                    else:
+                        issues.append(f"Failed to install {tool}: {result.error}")
+            else:
+                for tool in report.missing_required:
+                    tool_check = next((t for t in report.tools if t.name == tool), None)
+                    hint = tool_check.install_hint if tool_check else f"Install {tool}"
+                    issues.append(f"Missing {tool}: {hint}")
+
+        # Check repository requirements
+        log.info("Checking repository requirements...")
+        parser = RequirementsParser(repo_path)
+        reqs = parser.parse_all()
+
+        missing_python, missing_node = parser.get_missing_packages()
+
+        if missing_python or missing_node:
+            total_missing = len(missing_python) + len(missing_node)
+            log.info(f"Found {total_missing} missing packages")
+
+            if auto_install:
+                log.info("Installing repository dependencies...")
+                installer = PackageInstaller(repo_path, auto_confirm=True)
+                results = installer.install_repo_requirements()
+
+                for result in results:
+                    if result.success:
+                        log.info(f"Installed: {result.package}")
+                    else:
+                        issues.append(f"Failed to install {result.package}: {result.error}")
+            else:
+                # Provide setup commands instead
+                if reqs.setup_commands:
+                    issues.append(f"Run setup commands: {', '.join(reqs.setup_commands)}")
+                else:
+                    if missing_python:
+                        issues.append(f"Missing {len(missing_python)} Python packages")
+                    if missing_node:
+                        issues.append(f"Missing {len(missing_node)} Node.js packages")
+
+        # Check for pre-commit hooks
+        if (repo_path / ".pre-commit-config.yaml").exists():
+            pre_commit_installed = (repo_path / ".git" / "hooks" / "pre-commit").exists()
+            if not pre_commit_installed:
+                if auto_install:
+                    installer = PackageInstaller(repo_path, auto_confirm=True)
+                    result = installer.setup_pre_commit()
+                    if result.success:
+                        log.info("Installed pre-commit hooks")
+                    else:
+                        issues.append(f"Failed to install pre-commit hooks: {result.error}")
+                else:
+                    issues.append("Pre-commit hooks not installed. Run: pre-commit install")
+
+        ready = len([i for i in issues if "Failed" in i or "Missing" in i]) == 0
+
+        if ready:
+            log.info("Environment is ready")
+        else:
+            log.warning(f"Environment has {len(issues)} issues")
+
+        return {"ready": ready, "issues": issues}
 
     async def process_tickets(
         self,
@@ -145,6 +243,23 @@ class JiraAgent:
                 self.repo_config.repo.name,
             )
             ticket_logger.info(f"Repository ready at {repo_path}")
+
+            # Pre-flight environment check
+            auto_install = getattr(self.settings, "auto_install_deps", True)
+            env_result = await self.check_environment(
+                repo_path,
+                auto_install=auto_install,
+                ticket_logger=ticket_logger,
+            )
+
+            if not env_result["ready"]:
+                issues_str = "; ".join(env_result["issues"])
+                ticket_logger.error(f"Environment not ready: {issues_str}")
+                return {
+                    "ticket": ticket_key,
+                    "status": "failed",
+                    "error": f"Environment not ready: {issues_str}",
+                }
 
             # Use Claude to analyze and implement the change
             result = await self._run_agent_for_ticket(issue_summary, repo_path, ticket_logger)

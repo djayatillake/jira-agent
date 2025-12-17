@@ -19,6 +19,8 @@ Usage:
     jira-agent learn status
     jira-agent learn publish [--dry-run] [--jira-agent-repo=<repo>]
     jira-agent learn list [--category=<cat>]
+    jira-agent env check [--config=<path>] [--repo-path=<path>]
+    jira-agent env setup [--config=<path>] [--repo-path=<path>]
     jira-agent --help
     jira-agent --version
 
@@ -36,6 +38,7 @@ Commands:
     config          Show or validate configuration
     health          Test all service connections (Anthropic, Jira, GitHub, Databricks)
     learn           Manage agent learnings (captured from resolved failures)
+    env             Check and setup environment (system tools, repo requirements)
 
 Options:
     -h --help                Show this help message
@@ -55,6 +58,7 @@ Options:
     --service=<service>      Service to authenticate: jira, github, databricks, or all [default: all]
     --jira-agent-repo=<repo> GitHub repo for jira-agent [default: djayatillake/jira-agent]
     --category=<cat>         Filter learnings by category: ci-failure, code-pattern, error-resolution
+    --repo-path=<path>       Path to local repository to check/setup
 
 Environment Variables:
     ANTHROPIC_API_KEY           Required for Claude Agent SDK
@@ -122,6 +126,15 @@ Examples:
 
     # List learnings by category
     jira-agent learn list --category=ci-failure
+
+    # Check environment for a local repository
+    jira-agent env check --repo-path=/path/to/repo
+
+    # Check and auto-install missing dependencies
+    jira-agent env setup --repo-path=/path/to/repo
+
+    # Check environment using a config file (clones the repo)
+    jira-agent env check --config configs/acme-data.yaml
 """
 
 import asyncio
@@ -172,6 +185,8 @@ def main() -> int:
             return asyncio.run(handle_health(args, settings))
         elif args["learn"]:
             return handle_learn(args, settings)
+        elif args["env"]:
+            return handle_env(args, settings)
         else:
             print(__doc__)
             return 1
@@ -1240,6 +1255,150 @@ def handle_learn_list(args: dict, settings) -> int:
     else:
         print(f"\nTotal: {total_count} learnings")
 
+    return 0
+
+
+def handle_env(args: dict, settings) -> int:
+    """Handle environment commands."""
+    if args["check"]:
+        return handle_env_check(args, settings, auto_install=False)
+    elif args["setup"]:
+        return handle_env_check(args, settings, auto_install=True)
+    return 1
+
+
+def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
+    """Check environment for a repository."""
+    from pathlib import Path
+
+    from .environment import EnvironmentChecker, PackageInstaller
+    from .environment.requirements import RequirementsParser
+    from .tools.git_tools import GitTools
+
+    repo_path_str = args.get("--repo-path")
+    config_path = args.get("--config")
+
+    # Determine repo path
+    if repo_path_str:
+        repo_path = Path(repo_path_str)
+        if not repo_path.exists():
+            print(f"Error: Repository path does not exist: {repo_path}")
+            return 1
+        repo_config = None
+    elif config_path:
+        # Clone the repo first
+        from .repo_config.loader import ConfigLoader
+
+        loader = ConfigLoader()
+        repo_config = loader.load_from_file(config_path)
+
+        if not settings.has_github_token:
+            print("Error: GitHub token required to clone repository")
+            return 1
+
+        print(f"Cloning {repo_config.full_repo_name}...")
+        git = GitTools(settings.workspace_dir, settings.github_token)
+        repo_path = git.clone_repo(repo_config.repo.owner, repo_config.repo.name)
+        print(f"Repository at: {repo_path}")
+        print()
+    else:
+        # Use current directory
+        repo_path = Path.cwd()
+        repo_config = None
+
+    # Check system tools
+    print("System Tools")
+    print("=" * 50)
+
+    checker = EnvironmentChecker()
+    report = checker.check_for_repo(repo_path, repo_config)
+
+    for tool in report.tools:
+        status = "✓" if tool.installed else "✗"
+        req = "(required)" if tool.required else "(optional)"
+
+        if tool.installed:
+            version_str = f"v{tool.version}" if tool.version else ""
+            print(f"  {status} {tool.name:<15} {version_str:<12} {req}")
+        else:
+            print(f"  {status} {tool.name:<15} {'NOT FOUND':<12} {req}")
+            if tool.install_hint:
+                print(f"      → {tool.install_hint}")
+
+    print()
+
+    # Check repository requirements
+    print("Repository Requirements")
+    print("=" * 50)
+
+    parser = RequirementsParser(repo_path)
+    reqs = parser.parse_all()
+
+    if reqs.python_packages:
+        installed = [r for r in reqs.python_packages if r.installed]
+        missing = [r for r in reqs.python_packages if not r.installed]
+        print(f"\nPython: {len(installed)} installed, {len(missing)} missing")
+
+        if missing and not auto_install:
+            print("  Missing packages:")
+            for req in missing[:5]:
+                print(f"    - {req.name}")
+            if len(missing) > 5:
+                print(f"    ... and {len(missing) - 5} more")
+
+    if reqs.node_packages:
+        installed = [r for r in reqs.node_packages if r.installed]
+        missing = [r for r in reqs.node_packages if not r.installed]
+        print(f"\nNode.js: {len(installed)} installed, {len(missing)} missing")
+
+    if reqs.setup_commands:
+        print("\nDetected Setup Commands:")
+        for cmd in reqs.setup_commands:
+            print(f"  $ {cmd}")
+
+    print()
+
+    # Auto-install if requested
+    if auto_install:
+        print("Installing Dependencies")
+        print("=" * 50)
+
+        # Install missing system tools
+        if report.missing_required:
+            installer = PackageInstaller(repo_path, auto_confirm=True)
+            for tool in report.missing_required:
+                print(f"Installing {tool}...")
+                result = installer.install_system_tool(tool)
+                if result.success:
+                    print(f"  ✓ {tool} installed")
+                else:
+                    print(f"  ✗ {tool} failed: {result.error}")
+
+        # Install repo dependencies
+        missing_python, missing_node = parser.get_missing_packages()
+        if missing_python or missing_node or reqs.setup_commands:
+            installer = PackageInstaller(repo_path, auto_confirm=True)
+            results = installer.install_repo_requirements()
+
+            for result in results:
+                if result.success:
+                    print(f"  ✓ {result.package}")
+                else:
+                    print(f"  ✗ {result.package}: {result.error}")
+
+        print()
+
+    # Final status
+    if report.missing_required:
+        print(f"✗ Missing required tools: {', '.join(report.missing_required)}")
+        return 1
+
+    missing_python, missing_node = parser.get_missing_packages()
+    if (missing_python or missing_node) and not auto_install:
+        print("✗ Missing packages. Run 'jira-agent env setup' to install.")
+        return 1
+
+    print("✓ Environment is ready!")
     return 0
 
 

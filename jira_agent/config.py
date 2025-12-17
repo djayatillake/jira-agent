@@ -98,6 +98,12 @@ class AgentSettings(BaseSettings):
         description="Minimum confidence level to capture learnings (low, medium, high)",
     )
 
+    # Environment setup configuration
+    auto_install_deps: bool = Field(
+        default=True,
+        description="Automatically install missing dependencies before processing tickets",
+    )
+
     @property
     def has_jira_oauth(self) -> bool:
         """Check if Jira OAuth credentials are configured."""
