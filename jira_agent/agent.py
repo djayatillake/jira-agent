@@ -394,6 +394,10 @@ class JiraAgent:
         max_iterations = 50
         iteration = 0
 
+        # Track recent tool calls to detect loops
+        recent_tool_calls: list[tuple[str, str]] = []  # (tool_name, input_hash)
+        max_repeated_calls = 3  # Max times same tool+input can repeat
+
         while iteration < max_iterations:
             iteration += 1
             learning_capture.current_iteration = iteration
@@ -450,18 +454,45 @@ class JiraAgent:
                 tool_results = []
                 for content_block in response.content:
                     if content_block.type == "tool_use":
-                        # Show tool call in progress
-                        if progress:
-                            progress.tool_call(content_block.name, content_block.input)
+                        # Check for repeated tool calls (loop detection)
+                        import hashlib
+                        input_str = json.dumps(content_block.input, sort_keys=True)
+                        input_hash = hashlib.md5(input_str.encode()).hexdigest()[:8]
+                        call_signature = (content_block.name, input_hash)
 
-                        result = await self._execute_tool(
-                            content_block.name,
-                            content_block.input,
-                            repo_path,
-                            ticket_logger,
-                            learning_capture,
-                            progress,
-                        )
+                        # Count recent occurrences of this exact call
+                        recent_count = recent_tool_calls[-10:].count(call_signature)
+                        recent_tool_calls.append(call_signature)
+
+                        if recent_count >= max_repeated_calls:
+                            ticket_logger.warning(
+                                f"Loop detected: {content_block.name} called {recent_count + 1} times with same input"
+                            )
+                            if progress:
+                                progress.error(
+                                    "Loop detected",
+                                    f"{content_block.name} repeated {recent_count + 1} times - agent may be stuck"
+                                )
+                            # Return error to Claude to break the loop
+                            result = (
+                                f"Error: You have called {content_block.name} with the same input "
+                                f"{recent_count + 1} times. Please try a different approach or "
+                                f"complete the task with what you have. If an edit is failing, "
+                                f"try reading the file first to get the exact text to replace."
+                            )
+                        else:
+                            # Show tool call in progress
+                            if progress:
+                                progress.tool_call(content_block.name, content_block.input)
+
+                            result = await self._execute_tool(
+                                content_block.name,
+                                content_block.input,
+                                repo_path,
+                                ticket_logger,
+                                learning_capture,
+                                progress,
+                            )
 
                         # Show tool result
                         is_error = result.startswith("Error") or "Exit code: 1" in result
@@ -564,7 +595,7 @@ Start by exploring the codebase to understand the changes needed."""
             },
             {
                 "name": "write_file",
-                "description": "Write content to a file in the repository",
+                "description": "Write content to a file in the repository (creates or overwrites)",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -578,6 +609,28 @@ Start by exploring the codebase to understand the changes needed."""
                         },
                     },
                     "required": ["path", "content"],
+                },
+            },
+            {
+                "name": "edit_file",
+                "description": "Edit a file by replacing specific text. Use this for targeted edits instead of rewriting the entire file.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path relative to repository root",
+                        },
+                        "old_string": {
+                            "type": "string",
+                            "description": "The exact text to find and replace (must match exactly, including whitespace)",
+                        },
+                        "new_string": {
+                            "type": "string",
+                            "description": "The text to replace it with",
+                        },
+                    },
+                    "required": ["path", "old_string", "new_string"],
                 },
             },
             {
@@ -750,6 +803,48 @@ Start by exploring the codebase to understand the changes needed."""
                             )
 
                 return f"Successfully wrote to {tool_input['path']}"
+
+            elif tool_name == "edit_file":
+                file_path = repo_path / tool_input["path"]
+                if not file_path.exists():
+                    return f"Error: File not found: {tool_input['path']}"
+
+                content = file_path.read_text()
+                old_string = tool_input["old_string"]
+                new_string = tool_input["new_string"]
+
+                # Check if old_string exists in file
+                if old_string not in content:
+                    # Provide helpful error message
+                    return (
+                        f"Error: Could not find the text to replace in {tool_input['path']}. "
+                        f"The old_string must match exactly (including whitespace and newlines). "
+                        f"First 100 chars of old_string: {repr(old_string[:100])}"
+                    )
+
+                # Check for multiple occurrences
+                count = content.count(old_string)
+                if count > 1:
+                    return (
+                        f"Error: Found {count} occurrences of old_string in {tool_input['path']}. "
+                        f"Please provide a more specific/unique string to replace."
+                    )
+
+                # Perform the replacement
+                new_content = content.replace(old_string, new_string, 1)
+                file_path.write_text(new_content)
+
+                # Track file modifications
+                if learning_capture:
+                    for failure_type in list(learning_capture._failures.keys()):
+                        if not learning_capture._fix_attempts.get(failure_type):
+                            learning_capture.record_fix_attempt(
+                                failure_type=failure_type,
+                                solution_description=f"Edited file: {tool_input['path']}",
+                                files_modified=[tool_input["path"]],
+                            )
+
+                return f"Successfully edited {tool_input['path']}"
 
             elif tool_name == "list_directory":
                 dir_path = repo_path / tool_input.get("path", ".")

@@ -1,0 +1,46 @@
+# Jira Agent configuration for djayatillake/jira-agent
+repo:
+  owner: "djayatillake"
+  name: "jira-agent"
+  default_branch: "main"
+  pr_target_branch: "main"
+
+jira:
+  project_key: "AENG"
+  board_id: 296
+
+agent:
+  status: "Ready for Agent"
+  done_status: "Done"
+  in_progress_status: "In Progress"
+
+branching:
+  pattern: "{type}/{ticket_key}-{description}"
+  types:
+    feature: "feat"
+    bugfix: "fix"
+    refactor: "refactor"
+
+pull_request:
+  title_pattern: "{type}({scope}): {description} ({ticket_key})"
+
+commits:
+  style: "conventional"
+  ticket_in_message: true
+
+skip:
+  comment_phrase: "[AGENT-SKIP]"
+  labels:
+    - "no-automation"
+    - "manual-only"
+
+dbt:
+  enabled: false
+
+ci:
+  system: "github_actions"
+  auto_fix:
+    - "pre-commit"
+
+learning:
+  enabled: true
