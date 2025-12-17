@@ -560,7 +560,7 @@ async def handle_list_prs(args: dict, settings) -> int:
 
 
 async def handle_watch(args: dict, settings) -> int:
-    """Watch for trigger status tickets and merged PRs."""
+    """Watch for trigger status tickets, merged PRs, CI failures, and review comments."""
     import re
     from datetime import datetime, timezone
 
@@ -568,6 +568,7 @@ async def handle_watch(args: dict, settings) -> int:
     from .auth import AuthManager
     from .clients.github_client import GitHubClient
     from .clients.jira_client import JiraClient
+    from .pr_tracker import PRTracker
 
     interval = int(args["--interval"] or 60)
 
@@ -582,17 +583,24 @@ async def handle_watch(args: dict, settings) -> int:
         print("Error: Not authenticated with Jira. Run: jira-agent auth login --service=jira")
         return 1
 
+    # Load tracked PRs
+    tracker = PRTracker()
+    tracked_prs = tracker.get_open_prs(repo_config.full_repo_name)
+
     print(f"Watching {repo_config.full_repo_name}...", flush=True)
     print(f"Polling interval: {interval} seconds", flush=True)
     print(f"Jira project: {repo_config.jira.project_key}", flush=True)
     print(f"Trigger status: \"{repo_config.agent.status}\"", flush=True)
     print(f"Done status: \"{repo_config.agent.done_status}\"", flush=True)
+    if tracked_prs:
+        print(f"Tracking {len(tracked_prs)} open PRs for CI/review monitoring", flush=True)
     print(flush=True)
     print("Press Ctrl+C to stop", flush=True)
     print("-" * 50, flush=True)
 
     # Track processed items to avoid duplicates
     processed_prs: set[int] = set()
+    processed_comments: set[int] = set()  # Comment IDs already handled
     processing_tickets: set[str] = set()  # Tickets currently being processed
     ticket_pattern = rf"\b({re.escape(repo_config.jira.project_key)}-\d+)\b"
 
@@ -629,6 +637,16 @@ async def handle_watch(args: dict, settings) -> int:
 
                     if result.get("status") == "completed":
                         print(f"[{timestamp()}] ✓ {ticket_key} -> PR created: {result.get('pr_url', 'N/A')}", flush=True)
+                        # Track the new PR
+                        pr_match = re.search(r"/pull/(\d+)", result.get("pr_url", ""))
+                        if pr_match:
+                            tracker.add_pr(
+                                pr_number=int(pr_match.group(1)),
+                                pr_url=result["pr_url"],
+                                repo=repo_config.full_repo_name,
+                                ticket_key=ticket_key,
+                                branch=f"feat/{ticket_key}",
+                            )
                     elif result.get("status") == "skipped":
                         print(f"[{timestamp()}] ○ {ticket_key} skipped: {result.get('reason', 'N/A')}", flush=True)
                         processing_tickets.discard(ticket_key)
@@ -638,13 +656,87 @@ async def handle_watch(args: dict, settings) -> int:
 
                 await jira.close()
 
-                # === Poll GitHub for merged PRs ===
+                # === Poll GitHub for our tracked PRs ===
                 github = GitHubClient(
                     settings.github_token,
                     repo_config.repo.owner,
                     repo_config.repo.name,
                 )
 
+                # Refresh tracked PRs list
+                tracked_prs = tracker.get_open_prs(repo_config.full_repo_name)
+
+                for tracked in tracked_prs:
+                    pr_number = tracked.pr_number
+
+                    try:
+                        pr = await github.get_pull_request(pr_number)
+
+                        # Check if PR was merged or closed
+                        if pr.get("state") == "closed":
+                            if pr.get("merged_at"):
+                                print(f"[{timestamp()}] PR #{pr_number} was merged", flush=True)
+                                tracker.update_pr(repo_config.full_repo_name, pr_number, status="merged")
+
+                                # Transition ticket to done
+                                result = await agent.transition_ticket_to_done(tracked.ticket_key)
+                                if result.get("success"):
+                                    print(f"[{timestamp()}] ✓ {tracked.ticket_key} transitioned to Done", flush=True)
+                                processing_tickets.discard(tracked.ticket_key)
+                            else:
+                                print(f"[{timestamp()}] PR #{pr_number} was closed without merge", flush=True)
+                                tracker.update_pr(repo_config.full_repo_name, pr_number, status="closed")
+                            continue
+
+                        # Check CI status
+                        checks = await github.get_check_runs(pr["head"]["sha"])
+                        failed_checks = [c for c in checks if c.get("conclusion") == "failure"]
+
+                        if failed_checks:
+                            current_ci = tracked.ci_status
+                            if current_ci != "failure":
+                                print(f"[{timestamp()}] ⚠️  PR #{pr_number} has CI failures: {[c['name'] for c in failed_checks]}", flush=True)
+                                tracker.update_pr(repo_config.full_repo_name, pr_number, ci_status="failure")
+
+                                # Attempt to fix CI
+                                print(f"[{timestamp()}] 🔧 Attempting to fix CI failures...", flush=True)
+                                fix_result = await agent.fix_ci_failures(pr_number)
+
+                                if fix_result.get("fixed"):
+                                    print(f"[{timestamp()}] ✓ CI fix pushed: {fix_result.get('strategy', 'auto')}", flush=True)
+                                    tracker.update_pr(repo_config.full_repo_name, pr_number, ci_status="pending")
+                                else:
+                                    print(f"[{timestamp()}] ✗ Could not auto-fix: {fix_result.get('error', 'unknown')}", flush=True)
+                        else:
+                            pending_checks = [c for c in checks if c.get("status") != "completed"]
+                            if not pending_checks and tracked.ci_status != "success":
+                                print(f"[{timestamp()}] ✓ PR #{pr_number} CI passed", flush=True)
+                                tracker.update_pr(repo_config.full_repo_name, pr_number, ci_status="success")
+
+                        # Check for new review comments
+                        comments = await github.get_pr_review_comments(pr_number)
+                        new_comments = [c for c in comments if c["id"] not in processed_comments]
+
+                        if new_comments:
+                            # Filter for comments that aren't from the bot/agent
+                            actionable = [c for c in new_comments if not c.get("user", {}).get("login", "").endswith("[bot]")]
+
+                            if actionable and not tracked.feedback_addressed:
+                                print(f"[{timestamp()}] 💬 PR #{pr_number} has {len(actionable)} new review comment(s)", flush=True)
+                                tracker.update_pr(repo_config.full_repo_name, pr_number, has_feedback=True)
+
+                                # TODO: In future, agent can analyze and respond to comments
+                                # For now, just log and mark as needing attention
+                                for comment in actionable[:3]:  # Show first 3
+                                    body = comment.get("body", "")[:80]
+                                    user = comment.get("user", {}).get("login", "unknown")
+                                    print(f"           @{user}: {body}...", flush=True)
+                                    processed_comments.add(comment["id"])
+
+                    except Exception as e:
+                        print(f"[{timestamp()}] Error checking PR #{pr_number}: {e}", flush=True)
+
+                # === Also check for merged PRs we might have missed ===
                 prs = await github.list_pull_requests(state="closed")
 
                 for pr in prs:
@@ -720,7 +812,14 @@ async def handle_process(args: dict, settings) -> int:
 
 async def handle_process_ticket(args: dict, settings) -> int:
     """Process a single ticket."""
+    import re
+
+    import questionary
+    from questionary import Style
+
     from .agent import JiraAgent
+    from .clients.github_client import GitHubClient
+    from .pr_tracker import PRTracker
 
     ticket_key = args["<ticket_key>"]
     dry_run = args["--dry-run"]
@@ -736,6 +835,117 @@ async def handle_process_ticket(args: dict, settings) -> int:
         print(f"  PR: {result['pr_url']}")
     if result.get("error"):
         print(f"  Error: {result['error']}")
+
+    # Post-PR flow: reviewer selection and watch offer
+    if result.get("status") == "completed" and result.get("pr_url") and not dry_run:
+        pr_url = result["pr_url"]
+
+        # Extract PR number from URL
+        pr_match = re.search(r"/pull/(\d+)", pr_url)
+        if pr_match:
+            pr_number = int(pr_match.group(1))
+
+            custom_style = Style([
+                ("qmark", "fg:cyan bold"),
+                ("question", "fg:white bold"),
+                ("answer", "fg:green bold"),
+                ("pointer", "fg:cyan bold"),
+                ("highlighted", "fg:cyan bold"),
+            ])
+
+            # Track the PR
+            tracker = PRTracker()
+            tracker.add_pr(
+                pr_number=pr_number,
+                pr_url=pr_url,
+                repo=repo_config.full_repo_name,
+                ticket_key=ticket_key,
+                branch=f"feat/{ticket_key}",  # Best guess, could extract from PR
+            )
+
+            print()
+            print("─" * 50)
+            print("Post-PR Setup")
+            print("─" * 50)
+
+            # Reviewer selection
+            add_reviewers = questionary.confirm(
+                "Add reviewers to this PR?",
+                default=True,
+                style=custom_style,
+            ).ask()
+
+            if add_reviewers:
+                github = GitHubClient(
+                    settings.github_token,
+                    repo_config.repo.owner,
+                    repo_config.repo.name,
+                )
+
+                try:
+                    print("Fetching suggested reviewers...")
+                    suggested = await github.get_suggested_reviewers(pr_number)
+
+                    if suggested:
+                        choices = [
+                            questionary.Choice(
+                                title=f"@{r['login']}",
+                                value=r["login"],
+                            )
+                            for r in suggested
+                        ]
+
+                        selected = questionary.checkbox(
+                            "Select reviewers (space to select, enter to confirm):",
+                            choices=choices,
+                            style=custom_style,
+                        ).ask()
+
+                        if selected:
+                            await github.request_reviewers(pr_number, selected)
+                            print(f"✓ Added reviewers: {', '.join(selected)}")
+                    else:
+                        print("No suggested reviewers found.")
+                        manual = questionary.text(
+                            "Enter reviewer usernames (comma-separated, or leave empty):",
+                            style=custom_style,
+                        ).ask()
+                        if manual:
+                            reviewers = [r.strip().lstrip("@") for r in manual.split(",")]
+                            await github.request_reviewers(pr_number, reviewers)
+                            print(f"✓ Added reviewers: {', '.join(reviewers)}")
+
+                except Exception as e:
+                    print(f"Could not add reviewers: {e}")
+
+                finally:
+                    await github.close()
+
+            # Offer to watch
+            print()
+            watch_now = questionary.confirm(
+                "Watch this PR for CI failures and review comments?",
+                default=True,
+                style=custom_style,
+            ).ask()
+
+            if watch_now:
+                print()
+                print("Starting watch mode...")
+                print("The agent will monitor for CI failures and respond to feedback.")
+                print("Press Ctrl+C to stop watching.")
+                print()
+
+                # Call watch with this specific PR focus
+                watch_args = {
+                    "--config": args.get("--config"),
+                    "--interval": "30",  # Check every 30 seconds for active watching
+                }
+                return await handle_watch(watch_args, settings)
+            else:
+                print()
+                print("You can watch later with: jira-agent watch")
+                print("The agent will find your PRs and respond to any that need attention.")
 
     return 0 if result["status"] in ("completed", "skipped") else 1
 

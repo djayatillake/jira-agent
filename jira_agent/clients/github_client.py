@@ -278,6 +278,81 @@ class GitHubClient:
         params = {"head": f"{self.owner}:{branch}", "state": "all"}
         return await self._request("GET", url, params=params)
 
+    async def get_suggested_reviewers(self, pr_number: int) -> list[dict[str, Any]]:
+        """Get suggested reviewers for a PR.
+
+        Uses GitHub's suggested reviewers API based on blame info and past reviews.
+
+        Args:
+            pr_number: PR number.
+
+        Returns:
+            List of suggested reviewer users.
+        """
+        url = f"{self.repo_url}/pulls/{pr_number}/requested_reviewers"
+        try:
+            # First get current requested reviewers
+            current = await self._request("GET", url)
+            current_logins = {u["login"] for u in current.get("users", [])}
+
+            # Get collaborators as potential reviewers
+            collab_url = f"{self.repo_url}/collaborators"
+            collaborators = await self._request("GET", collab_url, params={"per_page": 50})
+
+            # Filter out current reviewers and the PR author
+            pr = await self.get_pull_request(pr_number)
+            author = pr.get("user", {}).get("login", "")
+
+            suggested = []
+            for collab in collaborators:
+                login = collab.get("login", "")
+                if login and login != author and login not in current_logins:
+                    suggested.append({
+                        "login": login,
+                        "avatar_url": collab.get("avatar_url", ""),
+                        "type": collab.get("type", "User"),
+                    })
+
+            return suggested[:10]  # Limit to 10 suggestions
+
+        except httpx.HTTPStatusError:
+            return []
+
+    async def request_reviewers(
+        self,
+        pr_number: int,
+        reviewers: list[str],
+        team_reviewers: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Request reviewers for a PR.
+
+        Args:
+            pr_number: PR number.
+            reviewers: List of user logins to request review from.
+            team_reviewers: Optional list of team slugs.
+
+        Returns:
+            Updated PR data.
+        """
+        url = f"{self.repo_url}/pulls/{pr_number}/requested_reviewers"
+        data = {"reviewers": reviewers}
+        if team_reviewers:
+            data["team_reviewers"] = team_reviewers
+
+        return await self._request("POST", url, json=data)
+
+    async def get_pr_comments(self, pr_number: int) -> list[dict[str, Any]]:
+        """Get all comments on a PR (issue comments, not review comments).
+
+        Args:
+            pr_number: PR number.
+
+        Returns:
+            List of comments.
+        """
+        url = f"{self.repo_url}/issues/{pr_number}/comments"
+        return await self._request("GET", url)
+
     async def get_workflow_runs(
         self,
         branch: str | None = None,
