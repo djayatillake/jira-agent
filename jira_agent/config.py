@@ -84,6 +84,20 @@ class AgentSettings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
 
+    # Learning system configuration
+    learning_enabled: bool = Field(
+        default=True,
+        description="Enable automatic learning capture from resolved failures",
+    )
+    jira_agent_repo: str = Field(
+        default="djayatillake/jira-agent",
+        description="GitHub repo for jira-agent (where learnings are published)",
+    )
+    learning_confidence_threshold: str = Field(
+        default="medium",
+        description="Minimum confidence level to capture learnings (low, medium, high)",
+    )
+
     @property
     def has_jira_oauth(self) -> bool:
         """Check if Jira OAuth credentials are configured."""

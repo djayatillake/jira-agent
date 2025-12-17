@@ -112,6 +112,36 @@ class CIConfig(BaseModel):
     )
 
 
+class AgentTriggerConfig(BaseModel):
+    """Agent trigger configuration."""
+
+    status: str = Field(
+        "Ready for Agent",
+        description="Jira status that triggers the agent to work on a ticket",
+    )
+    done_status: str = Field(
+        "Done",
+        description="Jira status to transition to after PR is merged",
+    )
+    in_progress_status: str = Field(
+        "In Progress",
+        description="Jira status to set while agent is working on ticket",
+    )
+
+
+class LearningConfig(BaseModel):
+    """Learning capture configuration for this repository."""
+
+    enabled: bool = Field(
+        True,
+        description="Enable learning capture for this repository",
+    )
+    categories: list[str] = Field(
+        default_factory=lambda: ["ci-failure", "code-pattern", "error-resolution"],
+        description="Categories of learnings to capture",
+    )
+
+
 class RepoConfig(BaseModel):
     """Complete repository configuration."""
 
@@ -124,6 +154,8 @@ class RepoConfig(BaseModel):
     dbt: DbtConfig = Field(default_factory=DbtConfig)
     databricks: DatabricksConfig = Field(default_factory=DatabricksConfig)
     ci: CIConfig = Field(default_factory=CIConfig)
+    agent: AgentTriggerConfig = Field(default_factory=AgentTriggerConfig)
+    learning: LearningConfig = Field(default_factory=LearningConfig)
 
     @property
     def full_repo_name(self) -> str:

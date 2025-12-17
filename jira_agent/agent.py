@@ -12,6 +12,7 @@ from .auth import AuthManager
 from .clients.github_client import GitHubClient, format_pr_status
 from .clients.jira_client import JiraClient, extract_text_from_adf, format_issue_summary
 from .config import AgentSettings
+from .learning import LearningCapture, detect_failure_type, is_failure_output
 from .repo_config.schema import RepoConfig
 from .tools.git_tools import GitTools, format_branch_name
 from .utils.logger import TicketLogger
@@ -224,6 +225,13 @@ class JiraAgent:
             ticket_logger.info("[DRY RUN] Would process with Claude")
             return {"success": True, "dry_run": True}
 
+        # Initialize learning capture
+        learning_capture = LearningCapture(
+            ticket_key=issue["key"],
+            repo_name=self.repo_config.full_repo_name,
+            enabled=getattr(self.settings, "learning_enabled", True),
+        )
+
         # Define tools for the agent
         tools = self._get_agent_tools()
 
@@ -236,6 +244,7 @@ class JiraAgent:
 
         while iteration < max_iterations:
             iteration += 1
+            learning_capture.current_iteration = iteration
             ticket_logger.debug(f"Agent iteration {iteration}")
 
             response = self.claude.messages.create(
@@ -250,7 +259,19 @@ class JiraAgent:
             if response.stop_reason == "end_turn":
                 ticket_logger.info("Agent completed task")
                 # Extract final result from response
-                return self._extract_result(response, messages)
+                result = self._extract_result(response, messages)
+
+                # Save any verified learnings
+                if result.get("success"):
+                    saved_paths = learning_capture.save_verified_learnings(
+                        repo_path,
+                        claude_client=self.claude,
+                        conversation_messages=messages,
+                    )
+                    if saved_paths:
+                        ticket_logger.info(f"Saved {len(saved_paths)} learnings")
+
+                return result
 
             # Process tool calls
             if response.stop_reason == "tool_use":
@@ -266,6 +287,7 @@ class JiraAgent:
                             content_block.input,
                             repo_path,
                             ticket_logger,
+                            learning_capture,
                         )
                         tool_results.append({
                             "type": "tool_result",
@@ -496,6 +518,7 @@ Start by exploring the codebase to understand the changes needed."""
         tool_input: dict,
         repo_path: Path,
         ticket_logger: TicketLogger,
+        learning_capture: LearningCapture | None = None,
     ) -> str:
         """Execute a tool and return the result.
 
@@ -504,6 +527,7 @@ Start by exploring the codebase to understand the changes needed."""
             tool_input: Tool input parameters.
             repo_path: Repository path.
             ticket_logger: Logger for this ticket.
+            learning_capture: Optional learning capture for tracking failures/fixes.
 
         Returns:
             Tool result as string.
@@ -524,6 +548,20 @@ Start by exploring the codebase to understand the changes needed."""
                 file_path = repo_path / tool_input["path"]
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(tool_input["content"])
+
+                # Track file modifications as potential fix attempts
+                if learning_capture:
+                    for failure_type in learning_capture.get_verified_fix_types():
+                        pass  # Already verified, no action needed
+                    # Record fix attempts for any pending failures
+                    for failure_type in list(learning_capture._failures.keys()):
+                        if not learning_capture._fix_attempts.get(failure_type):
+                            learning_capture.record_fix_attempt(
+                                failure_type=failure_type,
+                                solution_description=f"Modified file: {tool_input['path']}",
+                                files_modified=[tool_input["path"]],
+                            )
+
                 return f"Successfully wrote to {tool_input['path']}"
 
             elif tool_name == "list_directory":
@@ -592,13 +630,32 @@ Start by exploring the codebase to understand the changes needed."""
             elif tool_name == "run_command":
                 import shlex
 
-                command = shlex.split(tool_input["command"])
+                command_str = tool_input["command"]
+                command = shlex.split(command_str)
                 code, stdout, stderr = git.run_command(command)
                 result = f"Exit code: {code}\n"
                 if stdout:
                     result += f"stdout:\n{stdout}\n"
                 if stderr:
                     result += f"stderr:\n{stderr}\n"
+
+                # Track failures and verifications for learning
+                if learning_capture:
+                    combined_output = f"{stdout}\n{stderr}".strip()
+                    failure_type = detect_failure_type(command_str, combined_output)
+
+                    if failure_type:
+                        if code != 0 or is_failure_output(combined_output, code):
+                            # Record failure
+                            learning_capture.record_failure(
+                                failure_type=failure_type,
+                                error_message=combined_output[:2000],
+                                command=command_str,
+                            )
+                        elif learning_capture.has_pending_failure(failure_type):
+                            # Same type of command now succeeds - verify the fix
+                            learning_capture.verify_fix_success(failure_type)
+
                 return result
 
             else:
@@ -696,6 +753,60 @@ Start by exploring the codebase to understand the changes needed."""
                     }
 
         return {"fixed": False, "error": "Could not auto-fix CI failures"}
+
+    async def transition_ticket_to_done(self, ticket_key: str) -> dict[str, Any]:
+        """Transition a Jira ticket to Done status.
+
+        Args:
+            ticket_key: Jira ticket key.
+
+        Returns:
+            Result with success status.
+        """
+        logger.info(f"Transitioning {ticket_key} to Done")
+
+        try:
+            jira = await self._get_jira_client()
+
+            # Get available transitions
+            transitions = await jira.get_issue_transitions(ticket_key)
+
+            # Find "Done" transition (common names: Done, Closed, Complete)
+            done_transition = None
+            done_names = ["done", "closed", "complete", "resolved"]
+
+            for t in transitions:
+                if t.get("name", "").lower() in done_names:
+                    done_transition = t
+                    break
+
+            if not done_transition:
+                # Log available transitions for debugging
+                available = [t.get("name") for t in transitions]
+                logger.warning(f"No 'Done' transition found. Available: {available}")
+                return {
+                    "success": False,
+                    "error": f"No 'Done' transition available. Available: {available}",
+                }
+
+            # Perform transition
+            await jira.transition_issue(ticket_key, done_transition["id"])
+
+            # Add comment
+            await jira.add_comment(
+                ticket_key,
+                f"PR merged. Automatically transitioned to {done_transition['name']}.",
+            )
+
+            return {
+                "success": True,
+                "transition": done_transition["name"],
+                "ticket": ticket_key,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to transition {ticket_key}: {e}")
+            return {"success": False, "error": str(e)}
 
     async def close(self) -> None:
         """Clean up resources."""
