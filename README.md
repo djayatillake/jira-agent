@@ -48,48 +48,66 @@ Before installing the Jira Agent, ensure you have the following:
 
 ## Installation
 
-### Step 1: Clone and Install
+### Quick Install (Recommended)
+
+Install directly from GitHub using pipx:
+
+```bash
+# Install pipx if you haven't
+brew install pipx  # macOS
+# or: apt install pipx  # Ubuntu/Debian
+# or: pip install --user pipx  # Other
+
+pipx ensurepath  # Add pipx binaries to PATH (restart shell after)
+
+# Install jira-agent
+pipx install git+https://github.com/djayatillake/jira-agent.git
+
+# Verify installation
+jira-agent --help
+```
+
+To upgrade to the latest version:
+```bash
+pipx upgrade jira-agent
+```
+
+### Development Install
+
+For contributing or modifying the code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/jira-agent
+git clone https://github.com/djayatillake/jira-agent.git
 cd jira-agent
 
 # Install dependencies
 poetry install
-```
 
-### Step 2: Choose How to Run the CLI
-
-**Option A: Activate Poetry Shell (Recommended for Development)**
-```bash
-poetry shell
-# Now you can run commands directly:
-jira-agent --help
-jira-agent auth status
-```
-
-**Option B: Use Poetry Run Prefix**
-```bash
+# Run via poetry
 poetry run jira-agent --help
-```
 
-**Option C: Install Globally with pipx (Recommended for Regular Use)**
-```bash
-# Install pipx if you haven't
-brew install pipx
-pipx ensurepath
-
-# Install jira-agent globally
-pipx install .
-
-# Now available system-wide:
+# Or activate poetry shell for direct commands
+poetry shell
 jira-agent --help
 ```
 
-### Step 3: Set Up Environment Variables
+### Initial Setup
 
-Create a `.env` file in the project root or export these variables:
+After installation, run the interactive setup:
+
+```bash
+jira-agent init
+```
+
+This will:
+1. Check for required credentials (Anthropic API key, GitHub token, Jira OAuth)
+2. Prompt you to enter any missing credentials (stored securely in your system keyring)
+3. Create a `.jira-agent.yaml` config file in your repository
+
+#### Environment Variables (Alternative)
+
+You can also configure credentials via environment variables:
 
 ```bash
 # ===========================================
