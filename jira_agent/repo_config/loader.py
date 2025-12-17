@@ -1,10 +1,95 @@
 """Repository configuration loader."""
 
+import subprocess
 from pathlib import Path
 
 import yaml
 
 from .schema import RepoConfig
+
+# Standard config filename when stored in repo root
+REPO_CONFIG_FILENAME = ".jira-agent.yaml"
+
+
+def find_repo_config(start_path: Path | None = None) -> Path | None:
+    """Find .jira-agent.yaml in current directory or parent directories.
+
+    Searches up the directory tree until it finds a .jira-agent.yaml file
+    or reaches the git root (or filesystem root).
+
+    Args:
+        start_path: Directory to start searching from. Defaults to cwd.
+
+    Returns:
+        Path to config file if found, None otherwise.
+    """
+    if start_path is None:
+        start_path = Path.cwd()
+
+    current = start_path.resolve()
+
+    while current != current.parent:
+        config_path = current / REPO_CONFIG_FILENAME
+        if config_path.exists():
+            return config_path
+
+        # Also check for .yml extension
+        config_path_yml = current / ".jira-agent.yml"
+        if config_path_yml.exists():
+            return config_path_yml
+
+        # Stop at git root
+        if (current / ".git").exists():
+            break
+
+        current = current.parent
+
+    return None
+
+
+def get_git_remote_info(repo_path: Path | None = None) -> tuple[str, str] | None:
+    """Extract owner and repo name from git remote.
+
+    Args:
+        repo_path: Path to repository. Defaults to cwd.
+
+    Returns:
+        Tuple of (owner, name) or None if not detectable.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            cwd=repo_path,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+
+        url = result.stdout.strip()
+
+        # Handle SSH format: git@github.com:owner/repo.git
+        if url.startswith("git@"):
+            # git@github.com:owner/repo.git -> owner/repo
+            path = url.split(":")[-1]
+            path = path.removesuffix(".git")
+            parts = path.split("/")
+            if len(parts) >= 2:
+                return parts[-2], parts[-1]
+
+        # Handle HTTPS format: https://github.com/owner/repo.git
+        if "github.com" in url:
+            path = url.split("github.com/")[-1]
+            path = path.removesuffix(".git")
+            parts = path.split("/")
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    return None
 
 
 class ConfigLoader:
@@ -110,3 +195,19 @@ class ConfigLoader:
     def clear_cache(self) -> None:
         """Clear the configuration cache."""
         self._cache.clear()
+
+    def auto_detect(self, start_path: Path | None = None) -> RepoConfig | None:
+        """Auto-detect and load config from current directory.
+
+        Searches for .jira-agent.yaml in current directory and parents.
+
+        Args:
+            start_path: Directory to start searching from. Defaults to cwd.
+
+        Returns:
+            RepoConfig if found, None otherwise.
+        """
+        config_path = find_repo_config(start_path)
+        if config_path:
+            return self.load_from_file(config_path)
+        return None

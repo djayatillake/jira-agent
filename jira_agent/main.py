@@ -1,15 +1,15 @@
 """Jira Ticket Automation Agent CLI.
 
 Usage:
+    jira-agent init [--output=<path>]
     jira-agent list-tickets [--config=<path>] [--status=<status>] [--limit=<n>] [--interactive]
     jira-agent list-prs [--config=<path>] [--state=<state>]
     jira-agent watch [--config=<path>] [--interval=<seconds>]
-    jira-agent process [--config=<path>] [--repo=<repo>] [--status=<status>] [--limit=<n>] [--dry-run]
-    jira-agent process-ticket <ticket_key> [--config=<path>] [--repo=<repo>] [--dry-run]
-    jira-agent check-pr <pr_number> [--config=<path>] [--repo=<repo>]
-    jira-agent fix-ci <pr_number> [--config=<path>] [--repo=<repo>]
+    jira-agent process [--config=<path>] [--status=<status>] [--limit=<n>] [--dry-run]
+    jira-agent process-ticket <ticket_key> [--config=<path>] [--dry-run]
+    jira-agent check-pr <pr_number> [--config=<path>]
+    jira-agent fix-ci <pr_number> [--config=<path>]
     jira-agent serve [--port=<port>] [--host=<host>] [--config-dir=<dir>]
-    jira-agent init-config <repo> [--output=<path>]
     jira-agent auth login [--service=<service>]
     jira-agent auth status
     jira-agent auth logout [--service=<service>]
@@ -25,6 +25,7 @@ Usage:
     jira-agent --version
 
 Commands:
+    init            Initialize jira-agent for a repository (interactive setup)
     list-tickets    List tickets from a Jira board
     list-prs        List open PRs for the repository
     watch           Poll for merged PRs and auto-transition tickets to Done
@@ -33,7 +34,6 @@ Commands:
     check-pr        Check PR status and pending feedback
     fix-ci          Attempt to fix CI failures on a PR
     serve           Start webhook server for Jira/GitHub events
-    init-config     Generate a config file for a new repository
     auth            Manage OAuth authentication
     config          Show or validate configuration
     health          Test all service connections (Anthropic, Jira, GitHub, Databricks)
@@ -43,8 +43,7 @@ Commands:
 Options:
     -h --help                Show this help message
     --version                Show version
-    --config=<path>          Path to repo config file
-    --repo=<repo>            Repository in owner/name format (e.g., acme/data)
+    --config=<path>          Path to repo config file (auto-detects .jira-agent.yaml if not specified)
     --status=<status>        Filter tickets by Jira status (e.g., "To Do", "Ready for Dev")
     --state=<state>          Filter PRs by state: open, closed, all [default: open]
     --limit=<n>              Maximum tickets to process [default: 10]
@@ -54,7 +53,7 @@ Options:
     --port=<port>            Webhook server port [default: 8080]
     --host=<host>            Webhook server host [default: 0.0.0.0]
     --config-dir=<dir>       Directory containing repo config files [default: ./configs]
-    --output=<path>          Output path for generated config
+    --output=<path>          Output path for generated config [default: .jira-agent.yaml]
     --service=<service>      Service to authenticate: jira, github, databricks, or all [default: all]
     --jira-agent-repo=<repo> GitHub repo for jira-agent [default: djayatillake/jira-agent]
     --category=<cat>         Filter learnings by category: ci-failure, code-pattern, error-resolution
@@ -70,71 +69,51 @@ Environment Variables:
     JIRA_AGENT_WEBHOOK_SECRET            Secret for webhook validation
 
 Examples:
-    # Process all "Ready for Dev" tickets for acme/data
-    jira-agent process --config configs/acme-data.yaml --status="Ready for Dev" --limit=5
+    # GETTING STARTED - Initialize jira-agent in your repo
+    cd ~/repos/my-data-repo
+    jira-agent init
+    # Prompts for Jira project key, board ID, etc.
+    # Creates .jira-agent.yaml in repo root
 
-    # Process a specific ticket
-    jira-agent process-ticket AENG-1234 --config configs/acme-data.yaml
+    # Once initialized, all commands auto-detect config from .jira-agent.yaml
+    jira-agent list-tickets                    # Lists tickets for this repo
+    jira-agent process-ticket AENG-1234        # Process a specific ticket
+    jira-agent process --status="Ready for Dev" --limit=5  # Process multiple
 
-    # Start webhook server
-    jira-agent serve --port 8080 --config-dir ./configs
-
-    # Generate config for a new repo
-    jira-agent init-config acme/new-repo --output configs/acme-new-repo.yaml
-
-    # Authenticate with all services
-    jira-agent auth login
-
-    # Check authentication status
-    jira-agent auth status
-
-    # Test all service connections
-    jira-agent health
-
-    # Test connections with a specific config (tests repo access too)
-    jira-agent health --config configs/acme-data.yaml
-
-    # List tickets from board
+    # Or specify a config file explicitly
     jira-agent list-tickets --config configs/acme-data.yaml
 
-    # List tickets filtered by status
-    jira-agent list-tickets --config configs/acme-data.yaml --status="To Do"
+    # Authenticate with services (required before using agent)
+    jira-agent auth login          # Login to all services
+    jira-agent auth status         # Check authentication status
+
+    # Test all service connections
+    jira-agent health              # Test connections
+    jira-agent health --config .jira-agent.yaml  # Test with specific config
 
     # Interactive mode: browse and select a ticket to process
-    jira-agent list-tickets --config configs/acme-data.yaml --interactive
+    jira-agent list-tickets --interactive
+    jira-agent list-tickets --status="To Do" --interactive
 
     # List open PRs
-    jira-agent list-prs --config configs/acme-data.yaml
+    jira-agent list-prs
 
-    # Watch for merged PRs and auto-transition tickets (polls every 60s)
-    jira-agent watch --config configs/acme-data.yaml
+    # Watch for merged PRs and auto-transition tickets
+    jira-agent watch                        # Poll every 60s
+    jira-agent watch --interval=120         # Poll every 2 minutes
 
-    # Watch with custom interval
-    jira-agent watch --config configs/acme-data.yaml --interval=120
+    # Start webhook server (for CI/CD integration)
+    jira-agent serve --port 8080 --config-dir ./configs
 
-    # View pending learnings from agent execution
-    jira-agent learn status
-
-    # Publish learnings to jira-agent repo (creates PR)
-    jira-agent learn publish
-
-    # Publish with dry-run (preview only)
-    jira-agent learn publish --dry-run
-
-    # List learnings in knowledge base
-    jira-agent learn list
-
-    # List learnings by category
+    # Agent learnings (captured from resolved failures)
+    jira-agent learn status                 # View pending learnings
+    jira-agent learn publish                # Create PR with learnings
+    jira-agent learn publish --dry-run      # Preview only
     jira-agent learn list --category=ci-failure
 
-    # Check environment for a local repository
-    jira-agent env check --repo-path=/path/to/repo
-
-    # Check and auto-install missing dependencies
-    jira-agent env setup --repo-path=/path/to/repo
-
-    # Check environment using a config file (clones the repo)
-    jira-agent env check --config configs/acme-data.yaml
+    # Environment management
+    jira-agent env check                    # Check current repo environment
+    jira-agent env setup                    # Auto-install missing dependencies
 """
 
 import asyncio
@@ -145,9 +124,48 @@ from pathlib import Path
 from docopt import docopt
 
 from .config import get_settings
+from .repo_config.loader import ConfigLoader, find_repo_config, get_git_remote_info
 from .utils.logger import setup_logging
 
 __version__ = "0.1.0"
+
+
+def load_config_with_fallback(args: dict, required: bool = True):
+    """Load repo config with auto-detection fallback.
+
+    Tries in order:
+    1. Explicit --config path
+    2. Auto-detect .jira-agent.yaml in current directory
+
+    Args:
+        args: CLI arguments dict.
+        required: If True, raise error when no config found.
+
+    Returns:
+        RepoConfig or None.
+
+    Raises:
+        SystemExit: If required and no config found.
+    """
+    loader = ConfigLoader()
+    config_path = args.get("--config")
+
+    if config_path:
+        return loader.load_from_file(config_path)
+
+    # Try auto-detection
+    auto_config = loader.auto_detect()
+    if auto_config:
+        return auto_config
+
+    if required:
+        print("Error: No config found.")
+        print("Either:")
+        print("  1. Run 'jira-agent init' to create .jira-agent.yaml in this repo")
+        print("  2. Specify --config=<path> to a config file")
+        sys.exit(1)
+
+    return None
 
 
 def main() -> int:
@@ -179,8 +197,8 @@ def main() -> int:
             return asyncio.run(handle_fix_ci(args, settings))
         elif args["serve"]:
             return handle_serve(args, settings)
-        elif args["init-config"]:
-            return handle_init_config(args, settings)
+        elif args["init"]:
+            return asyncio.run(handle_init(args, settings))
         elif args["health"]:
             return asyncio.run(handle_health(args, settings))
         elif args["learn"]:
@@ -262,19 +280,12 @@ async def handle_list_tickets(args: dict, settings) -> int:
 
     from .auth import AuthManager
     from .clients.jira_client import JiraClient
-    from .repo_config.loader import ConfigLoader
 
-    config_path = args["--config"]
     status_filter = args["--status"]
     limit = int(args["--limit"]) if args["--limit"] else 20
     interactive = args["--interactive"]
 
-    if not config_path:
-        print("Error: --config must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    repo_config = loader.load_from_file(config_path)
+    repo_config = load_config_with_fallback(args)
 
     auth_manager = AuthManager(settings)
     if not auth_manager.jira.is_authenticated():
@@ -316,7 +327,7 @@ async def handle_list_tickets(args: dict, settings) -> int:
 
         # Interactive mode: use questionary for selection
         if interactive:
-            return await _interactive_ticket_selection(tickets, config_path, settings, repo_config)
+            return await _interactive_ticket_selection(tickets, settings, repo_config)
 
         # Non-interactive: just print the table
         print(f"{'Key':<12} {'Status':<20} {'Type':<12} {'Summary'}")
@@ -349,7 +360,6 @@ async def handle_list_tickets(args: dict, settings) -> int:
 
 async def _interactive_ticket_selection(
     tickets: list,
-    config_path: str,
     settings,
     repo_config,
 ) -> int:
@@ -445,7 +455,7 @@ async def _interactive_ticket_selection(
         print(f"Assignee: {assignee.get('displayName') if assignee else 'Unassigned'}")
         print()
         print("To process this ticket, run:")
-        print(f"  jira-agent process-ticket {ticket_key} --config {config_path}")
+        print(f"  jira-agent process-ticket {ticket_key}")
         return 0
 
     # Process the ticket
@@ -487,17 +497,10 @@ async def handle_list_prs(args: dict, settings) -> int:
     import re
 
     from .clients.github_client import GitHubClient
-    from .repo_config.loader import ConfigLoader
 
-    config_path = args["--config"]
     state = args["--state"] or "open"
 
-    if not config_path:
-        print("Error: --config must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    repo_config = loader.load_from_file(config_path)
+    repo_config = load_config_with_fallback(args)
 
     if not settings.has_github_token:
         print("Error: GitHub token not configured")
@@ -565,17 +568,10 @@ async def handle_watch(args: dict, settings) -> int:
     from .auth import AuthManager
     from .clients.github_client import GitHubClient
     from .clients.jira_client import JiraClient
-    from .repo_config.loader import ConfigLoader
 
-    config_path = args["--config"]
     interval = int(args["--interval"] or 60)
 
-    if not config_path:
-        print("Error: --config must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    repo_config = loader.load_from_file(config_path)
+    repo_config = load_config_with_fallback(args)
 
     if not settings.has_github_token:
         print("Error: GitHub token not configured")
@@ -700,23 +696,12 @@ async def handle_watch(args: dict, settings) -> int:
 async def handle_process(args: dict, settings) -> int:
     """Process tickets from a Jira board."""
     from .agent import JiraAgent
-    from .repo_config.loader import ConfigLoader
 
-    config_path = args["--config"]
-    repo_name = args["--repo"]
     status_filter = args["--status"]
     limit = int(args["--limit"])
     dry_run = args["--dry-run"]
 
-    if not config_path and not repo_name:
-        print("Error: Either --config or --repo must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    if config_path:
-        repo_config = loader.load_from_file(config_path)
-    else:
-        repo_config = loader.load_for_repo(repo_name)
+    repo_config = load_config_with_fallback(args)
 
     agent = JiraAgent(settings, repo_config, dry_run=dry_run)
     results = await agent.process_tickets(status_filter=status_filter, limit=limit)
@@ -736,22 +721,11 @@ async def handle_process(args: dict, settings) -> int:
 async def handle_process_ticket(args: dict, settings) -> int:
     """Process a single ticket."""
     from .agent import JiraAgent
-    from .repo_config.loader import ConfigLoader
 
     ticket_key = args["<ticket_key>"]
-    config_path = args["--config"]
-    repo_name = args["--repo"]
     dry_run = args["--dry-run"]
 
-    if not config_path and not repo_name:
-        print("Error: Either --config or --repo must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    if config_path:
-        repo_config = loader.load_from_file(config_path)
-    else:
-        repo_config = loader.load_for_repo(repo_name)
+    repo_config = load_config_with_fallback(args)
 
     agent = JiraAgent(settings, repo_config, dry_run=dry_run)
     result = await agent.process_single_ticket(ticket_key)
@@ -769,21 +743,10 @@ async def handle_process_ticket(args: dict, settings) -> int:
 async def handle_check_pr(args: dict, settings) -> int:
     """Check PR status."""
     from .agent import JiraAgent
-    from .repo_config.loader import ConfigLoader
 
     pr_number = int(args["<pr_number>"])
-    config_path = args["--config"]
-    repo_name = args["--repo"]
 
-    if not config_path and not repo_name:
-        print("Error: Either --config or --repo must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    if config_path:
-        repo_config = loader.load_from_file(config_path)
-    else:
-        repo_config = loader.load_for_repo(repo_name)
+    repo_config = load_config_with_fallback(args)
 
     agent = JiraAgent(settings, repo_config)
     status = await agent.check_pr_status(pr_number)
@@ -803,21 +766,10 @@ async def handle_check_pr(args: dict, settings) -> int:
 async def handle_fix_ci(args: dict, settings) -> int:
     """Attempt to fix CI failures on a PR."""
     from .agent import JiraAgent
-    from .repo_config.loader import ConfigLoader
 
     pr_number = int(args["<pr_number>"])
-    config_path = args["--config"]
-    repo_name = args["--repo"]
 
-    if not config_path and not repo_name:
-        print("Error: Either --config or --repo must be specified")
-        return 1
-
-    loader = ConfigLoader()
-    if config_path:
-        repo_config = loader.load_from_file(config_path)
-    else:
-        repo_config = loader.load_for_repo(repo_name)
+    repo_config = load_config_with_fallback(args)
 
     agent = JiraAgent(settings, repo_config)
     result = await agent.fix_ci_failures(pr_number)
@@ -848,31 +800,212 @@ def handle_serve(args: dict, settings) -> int:
     return 0
 
 
-def handle_init_config(args: dict, settings) -> int:
-    """Generate a config file for a new repository."""
-    repo = args["<repo>"]
-    output_path = args["--output"]
+async def handle_init(args: dict, settings) -> int:
+    """Interactive setup for jira-agent in a repository."""
+    import questionary
+    from questionary import Style
 
-    if "/" not in repo:
-        print("Error: Repository must be in owner/name format (e.g., acme/data)")
+    from .auth import AuthManager
+    from .clients.jira_client import JiraClient
+    from .repo_config.loader import REPO_CONFIG_FILENAME
+
+    custom_style = Style([
+        ("qmark", "fg:cyan bold"),
+        ("question", "fg:white bold"),
+        ("answer", "fg:green bold"),
+        ("pointer", "fg:cyan bold"),
+        ("highlighted", "fg:cyan bold"),
+    ])
+
+    print("=" * 50)
+    print("  Jira Agent - Repository Setup")
+    print("=" * 50)
+    print()
+
+    # Check if config already exists
+    existing_config = find_repo_config()
+    if existing_config:
+        overwrite = questionary.confirm(
+            f"Config already exists at {existing_config}. Overwrite?",
+            default=False,
+            style=custom_style,
+        ).ask()
+        if not overwrite:
+            print("Setup cancelled.")
+            return 0
+
+    # Detect repo from git remote
+    repo_info = get_git_remote_info()
+    if repo_info:
+        owner, name = repo_info
+        print(f"Detected repository: {owner}/{name}")
+        use_detected = questionary.confirm(
+            "Use this repository?",
+            default=True,
+            style=custom_style,
+        ).ask()
+        if not use_detected:
+            repo_info = None
+
+    if not repo_info:
+        repo_str = questionary.text(
+            "Repository (owner/name):",
+            style=custom_style,
+        ).ask()
+        if not repo_str or "/" not in repo_str:
+            print("Error: Repository must be in owner/name format")
+            return 1
+        owner, name = repo_str.split("/", 1)
+
+    # Get default branch
+    default_branch = questionary.text(
+        "Default branch:",
+        default="main",
+        style=custom_style,
+    ).ask()
+
+    print()
+    print("Jira Configuration")
+    print("-" * 30)
+
+    # Check Jira authentication
+    auth_manager = AuthManager(settings)
+    jira_authenticated = auth_manager.jira.is_authenticated()
+
+    if not jira_authenticated:
+        print("Not authenticated with Jira.")
+        login_now = questionary.confirm(
+            "Login to Jira now?",
+            default=True,
+            style=custom_style,
+        ).ask()
+        if login_now:
+            auth_manager.login("jira")
+            jira_authenticated = auth_manager.jira.is_authenticated()
+
+    # Get Jira project key
+    project_key = questionary.text(
+        "Jira project key (e.g., AENG):",
+        style=custom_style,
+    ).ask()
+
+    if not project_key:
+        print("Error: Project key is required")
         return 1
 
-    owner, name = repo.split("/", 1)
+    project_key = project_key.upper()
 
-    if not output_path:
-        output_path = f"configs/{owner}-{name}.yaml"
+    # Get board ID - optionally list boards
+    board_id = None
+    if jira_authenticated:
+        list_boards = questionary.confirm(
+            "List available Jira boards?",
+            default=True,
+            style=custom_style,
+        ).ask()
 
-    template = f"""# Configuration for {repo}
+        if list_boards:
+            try:
+                access_token = auth_manager.jira.get_access_token()
+                cloud_id = auth_manager.jira.get_cloud_id()
+                jira = JiraClient(cloud_id, access_token)
+
+                boards = await jira.get_boards(project_key=project_key)
+                await jira.close()
+
+                if boards:
+                    board_choices = [
+                        questionary.Choice(
+                            title=f"{b['name']} (ID: {b['id']})",
+                            value=b["id"],
+                        )
+                        for b in boards
+                    ]
+                    board_choices.append(questionary.Choice(title="Enter manually", value=None))
+
+                    board_id = questionary.select(
+                        "Select a board:",
+                        choices=board_choices,
+                        style=custom_style,
+                    ).ask()
+            except Exception as e:
+                print(f"Could not list boards: {e}")
+
+    if board_id is None:
+        board_id_str = questionary.text(
+            "Jira board ID (optional, press Enter to skip):",
+            style=custom_style,
+        ).ask()
+        board_id = int(board_id_str) if board_id_str else None
+
+    print()
+    print("Agent Trigger Configuration")
+    print("-" * 30)
+
+    trigger_status = questionary.text(
+        "Status that triggers the agent:",
+        default="Ready for Agent",
+        style=custom_style,
+    ).ask()
+
+    done_status = questionary.text(
+        "Status after PR is merged:",
+        default="Done",
+        style=custom_style,
+    ).ask()
+
+    in_progress_status = questionary.text(
+        "Status while agent is working:",
+        default="In Progress",
+        style=custom_style,
+    ).ask()
+
+    print()
+    print("Repository Features")
+    print("-" * 30)
+
+    # Detect dbt projects
+    cwd = Path.cwd()
+    dbt_projects = list(cwd.glob("**/dbt_project.yml"))
+    dbt_enabled = len(dbt_projects) > 0
+
+    if dbt_enabled:
+        print(f"Detected {len(dbt_projects)} dbt project(s)")
+        dbt_enabled = questionary.confirm(
+            "Enable dbt tools?",
+            default=True,
+            style=custom_style,
+        ).ask()
+
+    # Detect CI system
+    ci_system = "github_actions"
+    if (cwd / ".circleci").exists():
+        ci_system = "circleci"
+    elif (cwd / "Jenkinsfile").exists():
+        ci_system = "jenkins"
+
+    print(f"Detected CI system: {ci_system}")
+
+    # Build config
+    output_path = args.get("--output") or REPO_CONFIG_FILENAME
+
+    config_content = f"""# Jira Agent configuration for {owner}/{name}
+# Generated by: jira-agent init
+
 repo:
   owner: "{owner}"
   name: "{name}"
-  default_branch: "main"
-  pr_target_branch: "main"
+  default_branch: "{default_branch}"
+  pr_target_branch: "{default_branch}"
 
 jira:
-  base_url: "https://your-org.atlassian.net"
-  project_key: "PROJ"
-  board_id: null  # Set your board ID
+  project_key: "{project_key}"
+  board_id: {board_id if board_id else 'null'}
+
+agent:
+  status: "{trigger_status}"
+  done_status: "{done_status}"
+  in_progress_status: "{in_progress_status}"
 
 branching:
   pattern: "{{type}}/{{ticket_key}}-{{description}}"
@@ -883,12 +1016,9 @@ branching:
 
 pull_request:
   title_pattern: "{{type}}({{scope}}): {{description}} ({{ticket_key}})"
-  template_path: ".github/PULL_REQUEST_TEMPLATE.md"
-  contributing_path: ".github/CONTRIBUTING.md"
 
 commits:
   style: "conventional"
-  scope_required: false
   ticket_in_message: true
 
 skip:
@@ -898,24 +1028,33 @@ skip:
     - "manual-only"
 
 dbt:
-  enabled: false
-  projects: []
-
-databricks:
-  enabled: false
+  enabled: {str(dbt_enabled).lower()}
 
 ci:
-  system: "github_actions"
+  system: "{ci_system}"
   auto_fix:
     - "pre-commit"
+
+learning:
+  enabled: true
 """
 
+    # Write config
     output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(template)
+    output.write_text(config_content)
 
-    print(f"Generated config at: {output_path}")
-    print("Please edit the file to customize for your repository.")
+    print()
+    print("=" * 50)
+    print(f"✓ Config created: {output_path}")
+    print("=" * 50)
+    print()
+    print("Next steps:")
+    print("  1. Review and customize the config if needed")
+    print("  2. Run 'jira-agent auth login' if not authenticated")
+    print("  3. Run 'jira-agent health' to test connections")
+    print("  4. Run 'jira-agent list-tickets' to see available tickets")
+    print()
+
     return 0
 
 
@@ -1302,9 +1441,9 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
         print(f"Repository at: {repo_path}")
         print()
     else:
-        # Use current directory
+        # Use current directory and try to auto-detect config
         repo_path = Path.cwd()
-        repo_config = None
+        repo_config = load_config_with_fallback(args, required=False)
 
     # Check system tools
     print("System Tools")
