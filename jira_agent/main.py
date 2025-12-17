@@ -822,6 +822,129 @@ async def handle_init(args: dict, settings) -> int:
     print("=" * 50)
     print()
 
+    # ========================================
+    # Step 1: Check required credentials
+    # ========================================
+    print("Checking required credentials...")
+    print("-" * 30)
+
+    auth_manager = AuthManager(settings)
+    all_credentials_ok = True
+
+    # Check Anthropic API key
+    if settings.has_anthropic_key:
+        print("✓ Anthropic API key: configured")
+    else:
+        print("✗ Anthropic API key: NOT SET")
+        print()
+        print("  The Anthropic API key is required for the Claude AI agent.")
+        print("  To set it, add to your environment or .env file:")
+        print()
+        print("    export ANTHROPIC_API_KEY='your-api-key-here'")
+        print()
+        print("  Get your API key at: https://console.anthropic.com/settings/keys")
+        print()
+        all_credentials_ok = False
+
+        continue_anyway = questionary.confirm(
+            "Continue setup without Anthropic API key?",
+            default=False,
+            style=custom_style,
+        ).ask()
+        if not continue_anyway:
+            print("\nSetup cancelled. Please set ANTHROPIC_API_KEY and try again.")
+            return 1
+
+    # Check GitHub token
+    if settings.has_github_token:
+        print("✓ GitHub token: configured")
+    else:
+        print("✗ GitHub token: NOT SET")
+        print()
+        print("  GitHub token is required for creating PRs and accessing repos.")
+        print("  You can either:")
+        print()
+        print("  1. Install and authenticate with GitHub CLI (recommended):")
+        print("     brew install gh")
+        print("     gh auth login")
+        print()
+        print("  2. Or set a personal access token:")
+        print("     export JIRA_AGENT_GITHUB_TOKEN='your-token-here'")
+        print()
+        all_credentials_ok = False
+
+        setup_gh = questionary.confirm(
+            "Would you like to authenticate with GitHub CLI now?",
+            default=True,
+            style=custom_style,
+        ).ask()
+
+        if setup_gh:
+            import subprocess
+            print("\nLaunching 'gh auth login'...")
+            result = subprocess.run(["gh", "auth", "login"], capture_output=False)
+            if result.returncode == 0:
+                # Refresh settings to pick up new token
+                from .config import get_settings
+                settings = get_settings()
+                if settings.has_github_token:
+                    print("✓ GitHub token: now configured")
+                    all_credentials_ok = True
+        else:
+            continue_anyway = questionary.confirm(
+                "Continue setup without GitHub token?",
+                default=False,
+                style=custom_style,
+            ).ask()
+            if not continue_anyway:
+                print("\nSetup cancelled. Please configure GitHub access and try again.")
+                return 1
+
+    # Check Jira OAuth
+    jira_authenticated = auth_manager.jira.is_authenticated()
+    if jira_authenticated:
+        print("✓ Jira: authenticated")
+    else:
+        print("✗ Jira: NOT AUTHENTICATED")
+        print()
+        print("  Jira OAuth is required for reading tickets and updating status.")
+        print()
+
+        login_now = questionary.confirm(
+            "Login to Jira now?",
+            default=True,
+            style=custom_style,
+        ).ask()
+
+        if login_now:
+            auth_manager.login("jira")
+            jira_authenticated = auth_manager.jira.is_authenticated()
+            if jira_authenticated:
+                print("✓ Jira: now authenticated")
+        else:
+            all_credentials_ok = False
+            continue_anyway = questionary.confirm(
+                "Continue setup without Jira authentication?",
+                default=False,
+                style=custom_style,
+            ).ask()
+            if not continue_anyway:
+                print("\nSetup cancelled. Please authenticate with Jira and try again.")
+                return 1
+
+    print()
+    if all_credentials_ok:
+        print("All required credentials are configured!")
+    else:
+        print("Some credentials are missing - agent may not work fully.")
+    print()
+
+    # ========================================
+    # Step 2: Repository configuration
+    # ========================================
+    print("Repository Configuration")
+    print("-" * 30)
+
     # Check if config already exists
     existing_config = find_repo_config()
     if existing_config:
@@ -864,24 +987,11 @@ async def handle_init(args: dict, settings) -> int:
         style=custom_style,
     ).ask()
 
-    print()
-    print("Jira Configuration")
+    # ========================================
+    # Step 3: Jira project configuration
+    # ========================================
+    print("Jira Project Configuration")
     print("-" * 30)
-
-    # Check Jira authentication
-    auth_manager = AuthManager(settings)
-    jira_authenticated = auth_manager.jira.is_authenticated()
-
-    if not jira_authenticated:
-        print("Not authenticated with Jira.")
-        login_now = questionary.confirm(
-            "Login to Jira now?",
-            default=True,
-            style=custom_style,
-        ).ask()
-        if login_now:
-            auth_manager.login("jira")
-            jira_authenticated = auth_manager.jira.is_authenticated()
 
     # Get Jira project key
     project_key = questionary.text(
@@ -939,6 +1049,10 @@ async def handle_init(args: dict, settings) -> int:
         board_id = int(board_id_str) if board_id_str else None
 
     print()
+
+    # ========================================
+    # Step 4: Agent trigger configuration
+    # ========================================
     print("Agent Trigger Configuration")
     print("-" * 30)
 
@@ -961,7 +1075,11 @@ async def handle_init(args: dict, settings) -> int:
     ).ask()
 
     print()
-    print("Repository Features")
+
+    # ========================================
+    # Step 5: Auto-detect repository features
+    # ========================================
+    print("Repository Features (Auto-detected)")
     print("-" * 30)
 
     # Detect dbt projects
