@@ -1,134 +1,16 @@
-"""Jira Ticket Automation Agent CLI.
+"""Jirade - Jira Data Engineer CLI.
 
-Usage:
-    jirade init [--output=<path>]
-    jirade list-tickets [--config=<path>] [--status=<status>] [--limit=<n>] [--interactive]
-    jirade list-prs [--config=<path>] [--state=<state>]
-    jirade watch [--config=<path>] [--interval=<seconds>]
-    jirade process [--config=<path>] [--status=<status>] [--limit=<n>] [--dry-run]
-    jirade process-ticket <ticket_key> [--config=<path>] [--dry-run]
-    jirade check-pr <pr_number> [--config=<path>]
-    jirade fix-ci <pr_number> [--config=<path>]
-    jirade serve [--port=<port>] [--host=<host>] [--config-dir=<dir>]
-    jirade auth login [--service=<service>]
-    jirade auth status
-    jirade auth logout [--service=<service>]
-    jirade config show
-    jirade config validate <config_path>
-    jirade health [--config=<path>]
-    jirade learn status
-    jirade learn publish [--dry-run] [--jirade-repo=<repo>]
-    jirade learn list [--category=<cat>]
-    jirade env check [--config=<path>] [--repo-path=<path>]
-    jirade env setup [--config=<path>] [--repo-path=<path>]
-    jirade --help
-    jirade --version
-
-Commands:
-    init            Initialize jirade for a repository (interactive setup)
-    list-tickets    List tickets from a Jira board
-    list-prs        List open PRs for the repository
-    watch           Poll for merged PRs and auto-transition tickets to Done
-    process         Process tickets from a Jira board
-    process-ticket  Process a specific ticket by key
-    check-pr        Check PR status and pending feedback
-    fix-ci          Attempt to fix CI failures on a PR
-    serve           Start webhook server for Jira/GitHub events
-    auth            Manage OAuth authentication
-    config          Show or validate configuration
-    health          Test all service connections (Anthropic, Jira, GitHub, Databricks)
-    learn           Manage agent learnings (captured from resolved failures)
-    env             Check and setup environment (system tools, repo requirements)
-
-Options:
-    -h --help                Show this help message
-    --version                Show version
-    --config=<path>          Path to repo config file (auto-detects .jirade.yaml if not specified)
-    --status=<status>        Filter tickets by Jira status (e.g., "To Do", "Ready for Dev")
-    --state=<state>          Filter PRs by state: open, closed, all [default: open]
-    --limit=<n>              Maximum tickets to process [default: 10]
-    --interactive            Interactive mode: select ticket with arrow keys to process
-    --dry-run                Preview actions without making changes
-    --interval=<seconds>     Polling interval in seconds [default: 60]
-    --port=<port>            Webhook server port [default: 8080]
-    --host=<host>            Webhook server host [default: 0.0.0.0]
-    --config-dir=<dir>       Directory containing repo config files [default: ./configs]
-    --output=<path>          Output path for generated config [default: .jirade.yaml]
-    --service=<service>      Service to authenticate: jira, github, databricks, or all [default: all]
-    --jirade-repo=<repo> GitHub repo for jirade [default: djayatillake/jirade]
-    --category=<cat>         Filter learnings by category: ci-failure, code-pattern, error-resolution
-    --repo-path=<path>       Path to local repository to check/setup
-
-Environment Variables:
-    ANTHROPIC_API_KEY           Anthropic API key (or enter during 'init')
-    JIRADE_JIRA_OAUTH_CLIENT_ID      Jira OAuth app client ID
-    JIRADE_JIRA_OAUTH_CLIENT_SECRET  Jira OAuth app client secret
-    JIRADE_GITHUB_TOKEN              GitHub personal access token
-    JIRADE_DATABRICKS_HOST           Databricks workspace URL
-    JIRADE_DATABRICKS_TOKEN          Databricks personal access token
-    JIRADE_WEBHOOK_SECRET            Secret for webhook validation
-
-Credential Storage:
-    API keys entered during 'init' are stored securely in:
-    - macOS: Keychain
-    - Linux: Secret Service (GNOME Keyring/KWallet)
-    - Windows: Windows Credential Manager
-    - Fallback: ~/.jirade/tokens/ (with 0600 permissions)
-
-Examples:
-    # GETTING STARTED - Initialize jirade in your repo
-    cd ~/repos/my-data-repo
-    jirade init
-    # Prompts for Jira project key, board ID, etc.
-    # Creates .jirade.yaml in repo root
-
-    # Once initialized, all commands auto-detect config from .jirade.yaml
-    jirade list-tickets                    # Lists tickets for this repo
-    jirade process-ticket AENG-1234        # Process a specific ticket
-    jirade process --status="Ready for Dev" --limit=5  # Process multiple
-
-    # Or specify a config file explicitly
-    jirade list-tickets --config configs/my-repo.yaml
-
-    # Authenticate with services (required before using agent)
-    jirade auth login          # Login to all services
-    jirade auth status         # Check authentication status
-
-    # Test all service connections
-    jirade health              # Test connections
-    jirade health --config .jirade.yaml  # Test with specific config
-
-    # Interactive mode: browse and select a ticket to process
-    jirade list-tickets --interactive
-    jirade list-tickets --status="To Do" --interactive
-
-    # List open PRs
-    jirade list-prs
-
-    # Watch for merged PRs and auto-transition tickets
-    jirade watch                        # Poll every 60s
-    jirade watch --interval=120         # Poll every 2 minutes
-
-    # Start webhook server (for CI/CD integration)
-    jirade serve --port 8080 --config-dir ./configs
-
-    # Agent learnings (captured from resolved failures)
-    jirade learn status                 # View pending learnings
-    jirade learn publish                # Create PR with learnings
-    jirade learn publish --dry-run      # Preview only
-    jirade learn list --category=ci-failure
-
-    # Environment management
-    jirade env check                    # Check current repo environment
-    jirade env setup                    # Auto-install missing dependencies
+An autonomous agent that processes Jira tickets and implements code changes.
 """
 
 import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
-from docopt import docopt
+import typer
+from typing_extensions import Annotated
 
 from .config import get_settings
 from .repo_config.loader import ConfigLoader, find_repo_config, get_git_remote_info
@@ -136,31 +18,50 @@ from .utils.logger import setup_logging
 
 __version__ = "0.1.0"
 
+# Main app
+app = typer.Typer(
+    name="jirade",
+    help="Jira Data Engineer - Autonomous Jira ticket agent using Claude",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+)
 
-def load_config_with_fallback(args: dict, required: bool = True):
-    """Load repo config with auto-detection fallback.
+# Subcommand groups
+auth_app = typer.Typer(help="Manage OAuth authentication")
+config_app = typer.Typer(help="Show or validate configuration")
+learn_app = typer.Typer(help="Manage agent learnings")
+env_app = typer.Typer(help="Check and setup environment")
 
-    Tries in order:
-    1. Explicit --config path
-    2. Auto-detect .jirade.yaml in current directory
+app.add_typer(auth_app, name="auth")
+app.add_typer(config_app, name="config")
+app.add_typer(learn_app, name="learn")
+app.add_typer(env_app, name="env")
 
-    Args:
-        args: CLI arguments dict.
-        required: If True, raise error when no config found.
 
-    Returns:
-        RepoConfig or None.
+def version_callback(value: bool):
+    if value:
+        print(f"jirade {__version__}")
+        raise typer.Exit()
 
-    Raises:
-        SystemExit: If required and no config found.
-    """
+
+@app.callback()
+def main_callback(
+    version: Annotated[
+        Optional[bool],
+        typer.Option("--version", "-v", callback=version_callback, is_eager=True, help="Show version"),
+    ] = None,
+):
+    """Jirade - Jira Data Engineer CLI."""
+    pass
+
+
+def load_config_with_fallback(config_path: Optional[str], required: bool = True):
+    """Load repo config with auto-detection fallback."""
     loader = ConfigLoader()
-    config_path = args.get("--config")
 
     if config_path:
         return loader.load_from_file(config_path)
 
-    # Try auto-detection
     auto_config = loader.auto_detect()
     if auto_config:
         return auto_config
@@ -170,69 +71,284 @@ def load_config_with_fallback(args: dict, required: bool = True):
         print("Either:")
         print("  1. Run 'jirade init' to create .jirade.yaml in this repo")
         print("  2. Specify --config=<path> to a config file")
-        sys.exit(1)
+        raise typer.Exit(1)
 
     return None
 
 
-def main() -> int:
-    """Main entry point for the CLI."""
-    args = docopt(__doc__, version=f"jirade {__version__}")
+# ============================================================
+# Main Commands
+# ============================================================
 
+
+@app.command()
+def init(
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output path for config")
+    ] = ".jirade.yaml",
+):
+    """Initialize jirade for a repository (interactive setup)."""
     settings = get_settings()
     setup_logging(settings.log_level)
-    logger = logging.getLogger(__name__)
+    args = {"--output": output}
+    raise typer.Exit(handle_init(args, settings))
 
-    try:
-        if args["list-tickets"]:
-            return asyncio.run(handle_list_tickets(args, settings))
-        elif args["list-prs"]:
-            return asyncio.run(handle_list_prs(args, settings))
-        elif args["watch"]:
-            return asyncio.run(handle_watch(args, settings))
-        elif args["auth"]:
-            return handle_auth(args, settings)
-        elif args["config"]:
-            return handle_config_command(args, settings)
-        elif args["process"]:
-            return asyncio.run(handle_process(args, settings))
-        elif args["process-ticket"]:
-            result = asyncio.run(handle_process_ticket(args, settings))
-            # Post-PR flow runs in sync context to avoid questionary async conflicts
-            if result.get("post_pr_info"):
-                info = result["post_pr_info"]
-                return _post_pr_flow(
-                    info["pr_number"],
-                    info["pr_url"],
-                    info["repo_config"],
-                    settings,
-                    info["ticket_key"],
-                    args,
-                )
-            return result["exit_code"]
-        elif args["check-pr"]:
-            return asyncio.run(handle_check_pr(args, settings))
-        elif args["fix-ci"]:
-            return asyncio.run(handle_fix_ci(args, settings))
-        elif args["serve"]:
-            return handle_serve(args, settings)
-        elif args["init"]:
-            return handle_init(args, settings)
-        elif args["health"]:
-            return asyncio.run(handle_health(args, settings))
-        elif args["learn"]:
-            return handle_learn(args, settings)
-        elif args["env"]:
-            return handle_env(args, settings)
-        else:
-            print(__doc__)
-            return 1
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        return 130
-    except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
-        return 1
+
+@app.command("list-tickets")
+def list_tickets(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="Filter by Jira status")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-l", help="Maximum tickets to show")] = 20,
+    interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Interactive selection mode")] = False,
+):
+    """List tickets from a Jira board."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--config": config, "--status": status, "--limit": limit, "--interactive": interactive}
+    raise typer.Exit(asyncio.run(handle_list_tickets(args, settings)))
+
+
+@app.command("list-prs")
+def list_prs(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    state: Annotated[str, typer.Option("--state", help="PR state: open, closed, all")] = "open",
+):
+    """List open PRs for the repository."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--config": config, "--state": state}
+    raise typer.Exit(asyncio.run(handle_list_prs(args, settings)))
+
+
+@app.command()
+def watch(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    interval: Annotated[int, typer.Option("--interval", help="Polling interval in seconds")] = 60,
+):
+    """Watch for tickets and auto-transition when PRs merge."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--config": config, "--interval": interval}
+    raise typer.Exit(asyncio.run(handle_watch(args, settings)))
+
+
+@app.command()
+def process(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="Filter by Jira status")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-l", help="Maximum tickets to process")] = 10,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without making changes")] = False,
+):
+    """Process multiple tickets from a Jira board."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--config": config, "--status": status, "--limit": limit, "--dry-run": dry_run}
+    raise typer.Exit(asyncio.run(handle_process(args, settings)))
+
+
+@app.command("process-ticket")
+def process_ticket(
+    ticket_key: Annotated[str, typer.Argument(help="Jira ticket key (e.g., PROJ-123)")],
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without making changes")] = False,
+):
+    """Process a specific ticket by key."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"<ticket_key>": ticket_key, "--config": config, "--dry-run": dry_run}
+    result = asyncio.run(handle_process_ticket(args, settings))
+    if result.get("post_pr_info"):
+        info = result["post_pr_info"]
+        exit_code = _post_pr_flow(
+            info["pr_number"],
+            info["pr_url"],
+            info["repo_config"],
+            settings,
+            info["ticket_key"],
+            args,
+        )
+        raise typer.Exit(exit_code)
+    raise typer.Exit(result["exit_code"])
+
+
+@app.command("check-pr")
+def check_pr(
+    pr_number: Annotated[int, typer.Argument(help="PR number to check")],
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+):
+    """Check PR status and pending feedback."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"<pr_number>": pr_number, "--config": config}
+    raise typer.Exit(asyncio.run(handle_check_pr(args, settings)))
+
+
+@app.command("fix-ci")
+def fix_ci(
+    pr_number: Annotated[int, typer.Argument(help="PR number to fix")],
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+):
+    """Attempt to fix CI failures on a PR."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"<pr_number>": pr_number, "--config": config}
+    raise typer.Exit(asyncio.run(handle_fix_ci(args, settings)))
+
+
+@app.command()
+def serve(
+    port: Annotated[int, typer.Option("--port", "-p", help="Server port")] = 8080,
+    host: Annotated[str, typer.Option("--host", help="Server host")] = "0.0.0.0",
+    config_dir: Annotated[str, typer.Option("--config-dir", help="Config directory")] = "./configs",
+):
+    """Start webhook server for Jira/GitHub events."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--port": port, "--host": host, "--config-dir": config_dir}
+    raise typer.Exit(handle_serve(args, settings))
+
+
+@app.command()
+def health(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+):
+    """Test all service connections."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"--config": config}
+    raise typer.Exit(asyncio.run(handle_health(args, settings)))
+
+
+# ============================================================
+# Auth Subcommands
+# ============================================================
+
+
+@auth_app.command("login")
+def auth_login(
+    service: Annotated[str, typer.Option("--service", "-s", help="Service: jira, github, databricks, or all")] = "all",
+):
+    """Login to services."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"login": True, "status": False, "logout": False, "--service": service}
+    raise typer.Exit(handle_auth(args, settings))
+
+
+@auth_app.command("status")
+def auth_status():
+    """Show authentication status."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"login": False, "status": True, "logout": False, "--service": None}
+    raise typer.Exit(handle_auth(args, settings))
+
+
+@auth_app.command("logout")
+def auth_logout(
+    service: Annotated[str, typer.Option("--service", "-s", help="Service: jira, github, databricks, or all")] = "all",
+):
+    """Logout from services."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"login": False, "status": False, "logout": True, "--service": service}
+    raise typer.Exit(handle_auth(args, settings))
+
+
+# ============================================================
+# Config Subcommands
+# ============================================================
+
+
+@config_app.command("show")
+def config_show():
+    """Show current configuration."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"show": True, "validate": False}
+    raise typer.Exit(handle_config_command(args, settings))
+
+
+@config_app.command("validate")
+def config_validate(
+    config_path: Annotated[str, typer.Argument(help="Path to config file to validate")],
+):
+    """Validate a config file."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"show": False, "validate": True, "<config_path>": config_path}
+    raise typer.Exit(handle_config_command(args, settings))
+
+
+# ============================================================
+# Learn Subcommands
+# ============================================================
+
+
+@learn_app.command("status")
+def learn_status():
+    """Show pending learnings in workspace."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"status": True, "publish": False, "list": False}
+    raise typer.Exit(handle_learn(args, settings))
+
+
+@learn_app.command("publish")
+def learn_publish(
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without creating PR")] = False,
+    jirade_repo: Annotated[str, typer.Option("--jirade-repo", help="Target repo for learnings")] = "djayatillake/jirade",
+):
+    """Publish learnings to jirade repo via PR."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"status": False, "publish": True, "list": False, "--dry-run": dry_run, "--jirade-repo": jirade_repo}
+    raise typer.Exit(handle_learn(args, settings))
+
+
+@learn_app.command("list")
+def learn_list(
+    category: Annotated[Optional[str], typer.Option("--category", help="Filter by category")] = None,
+):
+    """List learnings in the knowledge base."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"status": False, "publish": False, "list": True, "--category": category}
+    raise typer.Exit(handle_learn(args, settings))
+
+
+# ============================================================
+# Env Subcommands
+# ============================================================
+
+
+@env_app.command("check")
+def env_check(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    repo_path: Annotated[Optional[str], typer.Option("--repo-path", help="Path to repository")] = None,
+):
+    """Check environment for a repository."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"check": True, "setup": False, "--config": config, "--repo-path": repo_path}
+    raise typer.Exit(handle_env(args, settings))
+
+
+@env_app.command("setup")
+def env_setup(
+    config: Annotated[Optional[str], typer.Option("--config", "-c", help="Path to config file")] = None,
+    repo_path: Annotated[Optional[str], typer.Option("--repo-path", help="Path to repository")] = None,
+):
+    """Auto-install missing dependencies."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    args = {"check": False, "setup": True, "--config": config, "--repo-path": repo_path}
+    raise typer.Exit(handle_env(args, settings))
+
+
+# ============================================================
+# Handler Functions (preserved from original)
+# ============================================================
 
 
 def handle_auth(args: dict, settings) -> int:
@@ -304,7 +420,7 @@ async def handle_list_tickets(args: dict, settings) -> int:
     limit = int(args["--limit"]) if args["--limit"] else 20
     interactive = args["--interactive"]
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     auth_manager = AuthManager(settings)
     if not auth_manager.jira.is_authenticated():
@@ -329,7 +445,6 @@ async def handle_list_tickets(args: dict, settings) -> int:
     print()
 
     try:
-        # Use JQL search (works with standard scopes)
         jql = f"project = {repo_config.jira.project_key}"
         if status_filter:
             jql += f' AND status = "{status_filter}"'
@@ -344,11 +459,9 @@ async def handle_list_tickets(args: dict, settings) -> int:
             print("No tickets found.")
             return 0
 
-        # Interactive mode: use questionary for selection
         if interactive:
             return await _interactive_ticket_selection(tickets, settings, repo_config)
 
-        # Non-interactive: just print the table
         print(f"{'Key':<12} {'Status':<20} {'Type':<12} {'Summary'}")
         print("-" * 80)
 
@@ -359,7 +472,6 @@ async def handle_list_tickets(args: dict, settings) -> int:
             issue_type = fields.get("issuetype", {}).get("name", "Unknown")
             summary = fields.get("summary", "")
 
-            # Truncate summary if too long
             if len(summary) > 40:
                 summary = summary[:37] + "..."
 
@@ -388,7 +500,6 @@ async def _interactive_ticket_selection(
 
     from .agent import JiraAgent
 
-    # Custom style for the selection
     custom_style = Style([
         ("qmark", "fg:cyan bold"),
         ("question", "fg:white bold"),
@@ -398,27 +509,21 @@ async def _interactive_ticket_selection(
         ("selected", "fg:green"),
     ])
 
-    # Build choices with ticket info
     choices = []
     for ticket in tickets:
         key = ticket.get("key", "")
         fields = ticket.get("fields", {})
         status = fields.get("status", {}).get("name", "Unknown")
-        issue_type = fields.get("issuetype", {}).get("name", "Unknown")
         summary = fields.get("summary", "")
 
-        # Truncate summary
         if len(summary) > 45:
             summary = summary[:42] + "..."
 
-        # Format: KEY [Status] Summary
         label = f"{key:<12} [{status:<15}] {summary}"
         choices.append(questionary.Choice(title=label, value=ticket))
 
-    # Add cancel option
     choices.append(questionary.Choice(title="Cancel", value=None))
 
-    # Show selection prompt
     print(f"Found {len(tickets)} tickets. Use arrow keys to navigate, Enter to select:\n")
 
     selected = questionary.select(
@@ -444,7 +549,6 @@ async def _interactive_ticket_selection(
     print(f"Status:   {status}")
     print()
 
-    # Ask what to do
     action = questionary.select(
         "What would you like to do?",
         choices=[
@@ -461,7 +565,6 @@ async def _interactive_ticket_selection(
         return 0
 
     if action == "details":
-        # Show full ticket details
         print()
         print("=" * 60)
         print(f"Ticket: {ticket_key}")
@@ -477,13 +580,11 @@ async def _interactive_ticket_selection(
         print(f"  jirade process-ticket {ticket_key}")
         return 0
 
-    # Process the ticket
     dry_run = action == "dry-run"
 
     if dry_run:
         print("Starting dry-run (no changes will be made)...")
     else:
-        # Confirm before processing
         confirm = questionary.confirm(
             f"Process {ticket_key} and create a PR?",
             default=True,
@@ -519,7 +620,7 @@ async def handle_list_prs(args: dict, settings) -> int:
 
     state = args["--state"] or "open"
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     if not settings.has_github_token:
         print("Error: GitHub token not configured")
@@ -552,7 +653,6 @@ async def handle_list_prs(args: dict, settings) -> int:
             title = pr.get("title", "")
             merged = pr.get("merged_at") is not None
 
-            # Extract ticket from title or branch
             branch = pr.get("head", {}).get("ref", "")
             match = re.search(ticket_pattern, f"{title} {branch}", re.IGNORECASE)
             ticket = match.group(1).upper() if match else "-"
@@ -560,7 +660,6 @@ async def handle_list_prs(args: dict, settings) -> int:
             if merged:
                 pr_state = "merged"
 
-            # Truncate title
             if len(title) > 45:
                 title = title[:42] + "..."
 
@@ -591,7 +690,7 @@ async def handle_watch(args: dict, settings) -> int:
 
     interval = int(args["--interval"] or 60)
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     if not settings.has_github_token:
         print("Error: GitHub token not configured")
@@ -602,7 +701,6 @@ async def handle_watch(args: dict, settings) -> int:
         print("Error: Not authenticated with Jira. Run: jirade auth login --service=jira")
         return 1
 
-    # Load tracked PRs
     tracker = PRTracker()
     tracked_prs = tracker.get_open_prs(repo_config.full_repo_name)
 
@@ -617,13 +715,11 @@ async def handle_watch(args: dict, settings) -> int:
     print("Press Ctrl+C to stop", flush=True)
     print("-" * 50, flush=True)
 
-    # Track processed items to avoid duplicates
     processed_prs: set[int] = set()
-    processed_comments: set[int] = set()  # Comment IDs already handled
-    processing_tickets: set[str] = set()  # Tickets currently being processed
+    processed_comments: set[int] = set()
+    processing_tickets: set[str] = set()
     ticket_pattern = rf"\b({re.escape(repo_config.jira.project_key)}-\d+)\b"
 
-    # Initialize agent
     agent = JiraAgent(settings, repo_config)
 
     def timestamp() -> str:
@@ -632,7 +728,6 @@ async def handle_watch(args: dict, settings) -> int:
     try:
         while True:
             try:
-                # === Poll Jira for tickets in trigger status ===
                 access_token = auth_manager.jira.get_access_token()
                 cloud_id = auth_manager.jira.get_cloud_id()
                 jira = JiraClient(cloud_id, access_token)
@@ -643,20 +738,17 @@ async def handle_watch(args: dict, settings) -> int:
                 for ticket in tickets:
                     ticket_key = ticket.get("key")
 
-                    # Skip if already processing
                     if ticket_key in processing_tickets:
                         continue
 
                     print(f"[{timestamp()}] Found ticket {ticket_key} in \"{repo_config.agent.status}\"", flush=True)
                     processing_tickets.add(ticket_key)
 
-                    # Process ticket (this creates a PR)
                     print(f"[{timestamp()}] Processing {ticket_key}...", flush=True)
                     result = await agent.process_single_ticket(ticket_key)
 
                     if result.get("status") == "completed":
                         print(f"[{timestamp()}] ✓ {ticket_key} -> PR created: {result.get('pr_url', 'N/A')}", flush=True)
-                        # Track the new PR
                         pr_match = re.search(r"/pull/(\d+)", result.get("pr_url", ""))
                         if pr_match:
                             tracker.add_pr(
@@ -675,14 +767,12 @@ async def handle_watch(args: dict, settings) -> int:
 
                 await jira.close()
 
-                # === Poll GitHub for our tracked PRs ===
                 github = GitHubClient(
                     settings.github_token,
                     repo_config.repo.owner,
                     repo_config.repo.name,
                 )
 
-                # Refresh tracked PRs list
                 tracked_prs = tracker.get_open_prs(repo_config.full_repo_name)
 
                 for tracked in tracked_prs:
@@ -691,13 +781,11 @@ async def handle_watch(args: dict, settings) -> int:
                     try:
                         pr = await github.get_pull_request(pr_number)
 
-                        # Check if PR was merged or closed
                         if pr.get("state") == "closed":
                             if pr.get("merged_at"):
                                 print(f"[{timestamp()}] PR #{pr_number} was merged", flush=True)
                                 tracker.update_pr(repo_config.full_repo_name, pr_number, status="merged")
 
-                                # Transition ticket to done
                                 result = await agent.transition_ticket_to_done(tracked.ticket_key)
                                 if result.get("success"):
                                     print(f"[{timestamp()}] ✓ {tracked.ticket_key} transitioned to Done", flush=True)
@@ -707,7 +795,6 @@ async def handle_watch(args: dict, settings) -> int:
                                 tracker.update_pr(repo_config.full_repo_name, pr_number, status="closed")
                             continue
 
-                        # Check CI status
                         checks = await github.get_check_runs(pr["head"]["sha"])
                         failed_checks = [c for c in checks if c.get("conclusion") == "failure"]
 
@@ -717,7 +804,6 @@ async def handle_watch(args: dict, settings) -> int:
                                 print(f"[{timestamp()}] ⚠️  PR #{pr_number} has CI failures: {[c['name'] for c in failed_checks]}", flush=True)
                                 tracker.update_pr(repo_config.full_repo_name, pr_number, ci_status="failure")
 
-                                # Attempt to fix CI
                                 print(f"[{timestamp()}] 🔧 Attempting to fix CI failures...", flush=True)
                                 fix_result = await agent.fix_ci_failures(pr_number)
 
@@ -732,21 +818,17 @@ async def handle_watch(args: dict, settings) -> int:
                                 print(f"[{timestamp()}] ✓ PR #{pr_number} CI passed", flush=True)
                                 tracker.update_pr(repo_config.full_repo_name, pr_number, ci_status="success")
 
-                        # Check for new review comments
                         comments = await github.get_pr_review_comments(pr_number)
                         new_comments = [c for c in comments if c["id"] not in processed_comments]
 
                         if new_comments:
-                            # Filter for comments that aren't from the bot/agent
                             actionable = [c for c in new_comments if not c.get("user", {}).get("login", "").endswith("[bot]")]
 
                             if actionable and not tracked.feedback_addressed:
                                 print(f"[{timestamp()}] 💬 PR #{pr_number} has {len(actionable)} new review comment(s)", flush=True)
                                 tracker.update_pr(repo_config.full_repo_name, pr_number, has_feedback=True)
 
-                                # TODO: In future, agent can analyze and respond to comments
-                                # For now, just log and mark as needing attention
-                                for comment in actionable[:3]:  # Show first 3
+                                for comment in actionable[:3]:
                                     body = comment.get("body", "")[:80]
                                     user = comment.get("user", {}).get("login", "unknown")
                                     print(f"           @{user}: {body}...", flush=True)
@@ -755,18 +837,15 @@ async def handle_watch(args: dict, settings) -> int:
                     except Exception as e:
                         print(f"[{timestamp()}] Error checking PR #{pr_number}: {e}", flush=True)
 
-                # === Also check for merged PRs we might have missed ===
                 prs = await github.list_pull_requests(state="closed")
 
                 for pr in prs:
                     pr_number = pr.get("number")
                     merged_at = pr.get("merged_at")
 
-                    # Skip if not merged or already processed
                     if not merged_at or pr_number in processed_prs:
                         continue
 
-                    # Extract ticket key
                     title = pr.get("title", "")
                     branch = pr.get("head", {}).get("ref", "")
                     match = re.search(ticket_pattern, f"{title} {branch}", re.IGNORECASE)
@@ -779,7 +858,6 @@ async def handle_watch(args: dict, settings) -> int:
 
                     print(f"[{timestamp()}] PR #{pr_number} merged -> transitioning {ticket_key} to \"{repo_config.agent.done_status}\"", flush=True)
 
-                    # Transition ticket to done
                     result = await agent.transition_ticket_to_done(ticket_key)
 
                     if result.get("success"):
@@ -795,7 +873,6 @@ async def handle_watch(args: dict, settings) -> int:
             except Exception as e:
                 print(f"[{timestamp()}] Error during poll: {e}", flush=True)
 
-            # Wait for next poll
             await asyncio.sleep(interval)
 
     except KeyboardInterrupt:
@@ -812,7 +889,7 @@ async def handle_process(args: dict, settings) -> int:
     limit = int(args["--limit"])
     dry_run = args["--dry-run"]
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     agent = JiraAgent(settings, repo_config, dry_run=dry_run)
     results = await agent.process_tickets(status_filter=status_filter, limit=limit)
@@ -837,10 +914,7 @@ def _post_pr_flow(
     ticket_key: str,
     args: dict,
 ) -> int:
-    """Handle post-PR setup: reviewer selection and watch offer.
-
-    This is a sync function to avoid async conflicts with questionary.
-    """
+    """Handle post-PR setup: reviewer selection and watch offer."""
     import questionary
     from questionary import Style
 
@@ -855,7 +929,6 @@ def _post_pr_flow(
         ("highlighted", "fg:cyan bold"),
     ])
 
-    # Track the PR
     tracker = PRTracker()
     tracker.add_pr(
         pr_number=pr_number,
@@ -870,7 +943,6 @@ def _post_pr_flow(
     print("Post-PR Setup")
     print("─" * 50)
 
-    # Reviewer selection
     add_reviewers = questionary.confirm(
         "Add reviewers to this PR?",
         default=True,
@@ -938,7 +1010,6 @@ def _post_pr_flow(
         except Exception as e:
             print(f"Could not add reviewers: {e}")
 
-    # Offer to watch
     print()
     watch_now = questionary.confirm(
         "Watch this PR for CI failures and review comments?",
@@ -953,10 +1024,9 @@ def _post_pr_flow(
         print("Press Ctrl+C to stop watching.")
         print()
 
-        # Call watch with this specific PR focus
         watch_args = {
             "--config": args.get("--config"),
-            "--interval": "30",
+            "--interval": 30,
         }
         return asyncio.run(handle_watch(watch_args, settings))
     else:
@@ -968,11 +1038,7 @@ def _post_pr_flow(
 
 
 async def handle_process_ticket(args: dict, settings) -> dict:
-    """Process a single ticket.
-
-    Returns:
-        Dict with 'exit_code' and optionally 'post_pr_info' for the sync post-PR flow.
-    """
+    """Process a single ticket."""
     import re
 
     from .agent import JiraAgent
@@ -980,7 +1046,7 @@ async def handle_process_ticket(args: dict, settings) -> dict:
     ticket_key = args["<ticket_key>"]
     dry_run = args["--dry-run"]
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     agent = JiraAgent(settings, repo_config, dry_run=dry_run)
     result = await agent.process_single_ticket(ticket_key)
@@ -994,7 +1060,6 @@ async def handle_process_ticket(args: dict, settings) -> dict:
 
     exit_code = 0 if result["status"] in ("completed", "skipped") else 1
 
-    # Return info for post-PR flow (to be called from sync context in main())
     if result.get("status") == "completed" and result.get("pr_url") and not dry_run:
         pr_url = result["pr_url"]
         pr_match = re.search(r"/pull/(\d+)", pr_url)
@@ -1018,7 +1083,7 @@ async def handle_check_pr(args: dict, settings) -> int:
 
     pr_number = int(args["<pr_number>"])
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     agent = JiraAgent(settings, repo_config)
     status = await agent.check_pr_status(pr_number)
@@ -1041,7 +1106,7 @@ async def handle_fix_ci(args: dict, settings) -> int:
 
     pr_number = int(args["<pr_number>"])
 
-    repo_config = load_config_with_fallback(args)
+    repo_config = load_config_with_fallback(args.get("--config"))
 
     agent = JiraAgent(settings, repo_config)
     result = await agent.fix_ci_failures(pr_number)
@@ -1089,20 +1154,16 @@ def handle_init(args: dict, settings) -> int:
     ])
 
     print("=" * 50)
-    print("  Jira Agent - Repository Setup")
+    print("  Jirade - Repository Setup")
     print("=" * 50)
     print()
 
-    # ========================================
-    # Step 1: Check required credentials
-    # ========================================
     print("Checking required credentials...")
     print("-" * 30)
 
     auth_manager = AuthManager(settings)
     all_credentials_ok = True
 
-    # Check Anthropic API key
     if settings.has_anthropic_key:
         print("✓ Anthropic API key: configured")
     else:
@@ -1126,13 +1187,11 @@ def handle_init(args: dict, settings) -> int:
             ).ask()
 
             if api_key and api_key.strip():
-                # Store the key securely
                 from .auth.token_store import TokenStore
 
                 store = TokenStore()
                 store.save("anthropic", {"api_key": api_key.strip()})
 
-                # Explain where the key was stored
                 if store._use_keyring:
                     import platform
                     system = platform.system()
@@ -1148,9 +1207,7 @@ def handle_init(args: dict, settings) -> int:
                 else:
                     print(f"✓ Anthropic API key: saved to {store.fallback_dir}/anthropic_tokens.json")
 
-                # Refresh settings to pick up the new key
                 from .config import get_settings
-
                 settings = get_settings()
                 all_credentials_ok = settings.has_anthropic_key
             else:
@@ -1165,7 +1222,6 @@ def handle_init(args: dict, settings) -> int:
                 print("\nSetup cancelled. Please provide an Anthropic API key and try again.")
                 return 1
 
-    # Check GitHub token
     if settings.has_github_token:
         print("✓ GitHub token: configured")
     else:
@@ -1194,7 +1250,6 @@ def handle_init(args: dict, settings) -> int:
             print("\nLaunching 'gh auth login'...")
             result = subprocess.run(["gh", "auth", "login"], capture_output=False)
             if result.returncode == 0:
-                # Refresh settings to pick up new token
                 from .config import get_settings
                 settings = get_settings()
                 if settings.has_github_token:
@@ -1210,7 +1265,6 @@ def handle_init(args: dict, settings) -> int:
                 print("\nSetup cancelled. Please configure GitHub access and try again.")
                 return 1
 
-    # Check Jira OAuth
     jira_authenticated = auth_manager.jira.is_authenticated()
     if jira_authenticated:
         print("✓ Jira: authenticated")
@@ -1249,13 +1303,9 @@ def handle_init(args: dict, settings) -> int:
         print("Some credentials are missing - agent may not work fully.")
     print()
 
-    # ========================================
-    # Step 2: Repository configuration
-    # ========================================
     print("Repository Configuration")
     print("-" * 30)
 
-    # Check if config already exists
     existing_config = find_repo_config()
     if existing_config:
         overwrite = questionary.confirm(
@@ -1267,7 +1317,6 @@ def handle_init(args: dict, settings) -> int:
             print("Setup cancelled.")
             return 0
 
-    # Detect repo from git remote
     repo_info = get_git_remote_info()
     if repo_info:
         owner, name = repo_info
@@ -1290,20 +1339,15 @@ def handle_init(args: dict, settings) -> int:
             return 1
         owner, name = repo_str.split("/", 1)
 
-    # Get default branch
     default_branch = questionary.text(
         "Default branch:",
         default="main",
         style=custom_style,
     ).ask()
 
-    # ========================================
-    # Step 3: Jira project configuration
-    # ========================================
     print("Jira Project Configuration")
     print("-" * 30)
 
-    # Get Jira project key
     project_key = questionary.text(
         "Jira project key (e.g., AENG):",
         style=custom_style,
@@ -1315,7 +1359,6 @@ def handle_init(args: dict, settings) -> int:
 
     project_key = project_key.upper()
 
-    # Get board ID - optionally list boards
     board_id = None
     if jira_authenticated:
         list_boards = questionary.confirm(
@@ -1365,9 +1408,6 @@ def handle_init(args: dict, settings) -> int:
 
     print()
 
-    # ========================================
-    # Step 4: Agent trigger configuration
-    # ========================================
     print("Agent Trigger Configuration")
     print("-" * 30)
 
@@ -1391,13 +1431,9 @@ def handle_init(args: dict, settings) -> int:
 
     print()
 
-    # ========================================
-    # Step 5: Auto-detect repository features
-    # ========================================
     print("Repository Features (Auto-detected)")
     print("-" * 30)
 
-    # Detect dbt projects
     cwd = Path.cwd()
     dbt_projects = list(cwd.glob("**/dbt_project.yml"))
     dbt_enabled = len(dbt_projects) > 0
@@ -1410,7 +1446,6 @@ def handle_init(args: dict, settings) -> int:
             style=custom_style,
         ).ask()
 
-    # Detect CI system
     ci_system = "github_actions"
     if (cwd / ".circleci").exists():
         ci_system = "circleci"
@@ -1419,10 +1454,9 @@ def handle_init(args: dict, settings) -> int:
 
     print(f"Detected CI system: {ci_system}")
 
-    # Build config
     output_path = args.get("--output") or REPO_CONFIG_FILENAME
 
-    config_content = f"""# Jira Agent configuration for {owner}/{name}
+    config_content = f"""# Jirade configuration for {owner}/{name}
 # Generated by: jirade init
 
 repo:
@@ -1472,7 +1506,6 @@ learning:
   enabled: true
 """
 
-    # Write config
     output = Path(output_path)
     output.write_text(config_content)
 
@@ -1505,7 +1538,6 @@ async def handle_health(args: dict, settings) -> int:
     config_path = args.get("--config")
     repo_config = None
 
-    # Load repo config if provided
     if config_path:
         from .repo_config.loader import ConfigLoader
 
@@ -1519,18 +1551,16 @@ async def handle_health(args: dict, settings) -> int:
 
     print()
 
-    # Test Anthropic API
     print("Anthropic API:")
     if settings.has_anthropic_key:
         try:
             client = Anthropic(api_key=settings.anthropic_api_key)
-            # Make a minimal API call to verify the key
             response = client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=10,
                 messages=[{"role": "user", "content": "Say OK"}],
             )
-            print(f"  Status: OK")
+            print("  Status: OK")
             print(f"  Model configured: {settings.claude_model}")
         except Exception as e:
             print(f"  Status: FAILED - {e}")
@@ -1541,14 +1571,12 @@ async def handle_health(args: dict, settings) -> int:
 
     print()
 
-    # Test Jira connection
     print("Jira:")
     auth_manager = AuthManager(settings)
     jira_token = auth_manager.jira.get_access_token() if auth_manager.jira.is_authenticated() else None
     if jira_token:
         try:
             async with httpx.AsyncClient() as client:
-                # Get accessible resources to find cloud ID
                 response = await client.get(
                     "https://api.atlassian.com/oauth/token/accessible-resources",
                     headers={"Authorization": f"Bearer {jira_token}"},
@@ -1556,12 +1584,11 @@ async def handle_health(args: dict, settings) -> int:
                 if response.status_code == 200:
                     resources = response.json()
                     if resources:
-                        print(f"  Status: OK")
+                        print("  Status: OK")
                         print(f"  Accessible sites: {len(resources)}")
-                        for r in resources[:3]:  # Show up to 3
+                        for r in resources[:3]:
                             print(f"    - {r.get('name', 'Unknown')} ({r.get('url', '')})")
 
-                        # If we have a config, test access to the specific project
                         if repo_config and repo_config.jira.project_key:
                             cloud_id = resources[0]["id"]
                             project_response = await client.get(
@@ -1575,7 +1602,7 @@ async def handle_health(args: dict, settings) -> int:
                                 print(f"  Project {repo_config.jira.project_key}: FAILED (status {project_response.status_code})")
                                 all_ok = False
                     else:
-                        print(f"  Status: WARNING - No accessible Jira sites")
+                        print("  Status: WARNING - No accessible Jira sites")
                 else:
                     print(f"  Status: FAILED - Token invalid or expired (status {response.status_code})")
                     all_ok = False
@@ -1589,7 +1616,6 @@ async def handle_health(args: dict, settings) -> int:
 
     print()
 
-    # Test GitHub connection
     print("GitHub:")
     if settings.has_github_token:
         try:
@@ -1603,10 +1629,9 @@ async def handle_health(args: dict, settings) -> int:
                 )
                 if response.status_code == 200:
                     user = response.json()
-                    print(f"  Status: OK")
+                    print("  Status: OK")
                     print(f"  User: {user.get('login', 'Unknown')}")
 
-                    # If we have a config, test access to the repo
                     if repo_config:
                         repo_response = await client.get(
                             f"https://api.github.com/repos/{repo_config.repo.owner}/{repo_config.repo.name}",
@@ -1636,7 +1661,6 @@ async def handle_health(args: dict, settings) -> int:
 
     print()
 
-    # Test Databricks connection (optional)
     print("Databricks:")
     if settings.has_databricks:
         try:
@@ -1646,7 +1670,7 @@ async def handle_health(args: dict, settings) -> int:
                     headers={"Authorization": f"Bearer {settings.databricks_token}"},
                 )
                 if response.status_code == 200:
-                    print(f"  Status: OK")
+                    print("  Status: OK")
                     print(f"  Host: {settings.databricks_host}")
                 else:
                     print(f"  Status: FAILED - (status {response.status_code})")
@@ -1669,11 +1693,11 @@ async def handle_health(args: dict, settings) -> int:
 
 def handle_learn(args: dict, settings) -> int:
     """Handle learn commands."""
-    if args["status"]:
+    if args.get("status"):
         return handle_learn_status(args, settings)
-    elif args["publish"]:
+    elif args.get("publish"):
         return handle_learn_publish(args, settings)
-    elif args["list"]:
+    elif args.get("list"):
         return handle_learn_list(args, settings)
     return 1
 
@@ -1693,7 +1717,6 @@ def handle_learn_status(args: dict, settings) -> int:
     print(f"Found {len(learnings)} pending learnings:")
     print("-" * 60)
 
-    # Group by repo
     by_repo: dict[str, list] = {}
     for learning in learnings:
         by_repo.setdefault(learning.repo, []).append(learning)
@@ -1705,7 +1728,7 @@ def handle_learn_status(args: dict, settings) -> int:
             print(f"    Ticket: {learning.ticket}, Subcategory: {learning.subcategory}")
 
     print()
-    print(f"Run 'jirade learn publish' to create a PR with these learnings.")
+    print("Run 'jirade learn publish' to create a PR with these learnings.")
     return 0
 
 
@@ -1761,15 +1784,12 @@ def handle_learn_publish(args: dict, settings) -> int:
 
 def handle_learn_list(args: dict, settings) -> int:
     """List learnings in the knowledge base."""
-    from pathlib import Path
-
     from .learning import LearningCategory
     from .learning.publisher import CATEGORY_DIRS, KNOWLEDGE_BASE_DIR
     from .learning.storage import LearningStorage
 
     category_filter = args.get("--category")
 
-    # Try to find knowledge base in current directory or jirade clone
     kb_paths = [
         Path.cwd() / KNOWLEDGE_BASE_DIR,
         settings.workspace_dir / "djayatillake-jirade" / KNOWLEDGE_BASE_DIR,
@@ -1811,7 +1831,7 @@ def handle_learn_list(args: dict, settings) -> int:
 
         print(f"\n{category.value} ({len(md_files)} learnings):")
 
-        for md_file in sorted(md_files)[:10]:  # Show first 10
+        for md_file in sorted(md_files)[:10]:
             learning = storage.parse_markdown(md_file)
             if learning:
                 print(f"  - {learning.title}")
@@ -1832,17 +1852,15 @@ def handle_learn_list(args: dict, settings) -> int:
 
 def handle_env(args: dict, settings) -> int:
     """Handle environment commands."""
-    if args["check"]:
+    if args.get("check"):
         return handle_env_check(args, settings, auto_install=False)
-    elif args["setup"]:
+    elif args.get("setup"):
         return handle_env_check(args, settings, auto_install=True)
     return 1
 
 
 def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
     """Check environment for a repository."""
-    from pathlib import Path
-
     from .environment import EnvironmentChecker, PackageInstaller
     from .environment.requirements import RequirementsParser
     from .tools.git_tools import GitTools
@@ -1850,7 +1868,6 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
     repo_path_str = args.get("--repo-path")
     config_path = args.get("--config")
 
-    # Determine repo path
     if repo_path_str:
         repo_path = Path(repo_path_str)
         if not repo_path.exists():
@@ -1858,7 +1875,6 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
             return 1
         repo_config = None
     elif config_path:
-        # Clone the repo first
         from .repo_config.loader import ConfigLoader
 
         loader = ConfigLoader()
@@ -1874,11 +1890,9 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
         print(f"Repository at: {repo_path}")
         print()
     else:
-        # Use current directory and try to auto-detect config
         repo_path = Path.cwd()
-        repo_config = load_config_with_fallback(args, required=False)
+        repo_config = load_config_with_fallback(args.get("--config"), required=False)
 
-    # Check system tools
     print("System Tools")
     print("=" * 50)
 
@@ -1899,7 +1913,6 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
 
     print()
 
-    # Check repository requirements
     print("Repository Requirements")
     print("=" * 50)
 
@@ -1930,12 +1943,10 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
 
     print()
 
-    # Auto-install if requested
     if auto_install:
         print("Installing Dependencies")
         print("=" * 50)
 
-        # Install missing system tools
         if report.missing_required:
             installer = PackageInstaller(repo_path, auto_confirm=True)
             for tool in report.missing_required:
@@ -1946,7 +1957,6 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
                 else:
                     print(f"  ✗ {tool} failed: {result.error}")
 
-        # Install repo dependencies
         missing_python, missing_node = parser.get_missing_packages()
         if missing_python or missing_node or reqs.setup_commands:
             installer = PackageInstaller(repo_path, auto_confirm=True)
@@ -1960,7 +1970,6 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
 
         print()
 
-    # Final status
     if report.missing_required:
         print(f"✗ Missing required tools: {', '.join(report.missing_required)}")
         return 1
@@ -1974,5 +1983,10 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
     return 0
 
 
+def main():
+    """Main entry point."""
+    app()
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

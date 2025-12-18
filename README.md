@@ -251,6 +251,62 @@ All required services are healthy!
 
 ---
 
+## Shell Completion
+
+Jirade supports tab completion for Bash, Zsh, Fish, and PowerShell.
+
+### Install Completion
+
+```bash
+# Automatically install for your current shell
+jirade --install-completion
+```
+
+This detects your shell and adds the completion script to the appropriate config file.
+
+### Manual Installation
+
+If you prefer to install manually or the auto-install doesn't work:
+
+```bash
+# Show the completion script for your shell
+jirade --show-completion
+
+# Bash (add to ~/.bashrc)
+jirade --show-completion bash >> ~/.bashrc
+
+# Zsh (add to ~/.zshrc)
+jirade --show-completion zsh >> ~/.zshrc
+
+# Fish (add to completions directory)
+jirade --show-completion fish > ~/.config/fish/completions/jirade.fish
+
+# PowerShell (add to profile)
+jirade --show-completion powershell >> $PROFILE
+```
+
+After installation, restart your shell or source your config file:
+
+```bash
+# Bash
+source ~/.bashrc
+
+# Zsh
+source ~/.zshrc
+```
+
+### Usage
+
+After installation, press `Tab` to complete commands and options:
+
+```bash
+jirade pr<Tab>          # Completes to: process, process-ticket
+jirade auth <Tab>       # Shows: login, logout, status
+jirade --<Tab>          # Shows: --help, --version, --config
+```
+
+---
+
 ## Jira OAuth Setup
 
 The agent uses Jira OAuth 2.0 (3LO) for authentication. Here's how to set it up:
