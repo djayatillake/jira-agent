@@ -12,7 +12,7 @@ import keyring
 class TokenStore:
     """Secure token storage using system keyring with file fallback."""
 
-    SERVICE_NAME = "jira-agent"
+    SERVICE_NAME = "jirade"
 
     def __init__(self, fallback_dir: Path | None = None):
         """Initialize token store.
@@ -20,7 +20,7 @@ class TokenStore:
         Args:
             fallback_dir: Directory for fallback file storage if keyring unavailable.
         """
-        self.fallback_dir = fallback_dir or Path.home() / ".jira-agent" / "tokens"
+        self.fallback_dir = fallback_dir or Path.home() / ".jirade" / "tokens"
         self._use_keyring = self._check_keyring_available()
 
     def _check_keyring_available(self) -> bool:

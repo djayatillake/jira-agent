@@ -46,13 +46,13 @@ def get_gh_cli_token() -> str:
 
 
 class AgentSettings(BaseSettings):
-    """Global settings for the Jira Agent.
+    """Global settings for Jirade (Jira Data Engineer).
 
     These settings are loaded from environment variables.
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="JIRA_AGENT_",
+        env_prefix="JIRADE_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
@@ -95,7 +95,7 @@ class AgentSettings(BaseSettings):
 
     # Workspace configuration
     workspace_dir: Path = Field(
-        default_factory=lambda: Path("/tmp/jira-agent"),
+        default_factory=lambda: Path("/tmp/jirade"),
         description="Directory where target repos are cloned",
     )
 
@@ -107,9 +107,9 @@ class AgentSettings(BaseSettings):
         default=True,
         description="Enable automatic learning capture from resolved failures",
     )
-    jira_agent_repo: str = Field(
-        default="djayatillake/jira-agent",
-        description="GitHub repo for jira-agent (where learnings are published)",
+    jirade_repo: str = Field(
+        default="djayatillake/jirade",
+        description="GitHub repo for jirade (where learnings are published)",
     )
     learning_confidence_threshold: str = Field(
         default="medium",
@@ -146,7 +146,7 @@ class AgentSettings(BaseSettings):
 def get_settings() -> AgentSettings:
     """Get the global agent settings.
 
-    Settings are loaded from environment variables with JIRA_AGENT_ prefix,
+    Settings are loaded from environment variables with JIRADE_ prefix,
     or from ANTHROPIC_API_KEY for the API key.
     """
     return AgentSettings()

@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "jira-agent"
+name = "jirade"
 version = "0.1.0"
-description = "Autonomous Jira ticket agent using Claude Agent SDK"
+description = "Jira Data Engineer - Autonomous Jira ticket agent using Claude"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-packages = [{include = "jira_agent"}]
+packages = [{include = "jirade"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -34,7 +34,7 @@ ruff = "^0.8.0"
 responses = "^0.25.0"
 
 [tool.poetry.scripts]
-jira-agent = "jira_agent.main:main"
+jirade = "jirade.main:main"
 
 [tool.black]
 line-length = 120

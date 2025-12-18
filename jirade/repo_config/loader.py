@@ -8,13 +8,13 @@ import yaml
 from .schema import RepoConfig
 
 # Standard config filename when stored in repo root
-REPO_CONFIG_FILENAME = ".jira-agent.yaml"
+REPO_CONFIG_FILENAME = ".jirade.yaml"
 
 
 def find_repo_config(start_path: Path | None = None) -> Path | None:
-    """Find .jira-agent.yaml in current directory or parent directories.
+    """Find .jirade.yaml in current directory or parent directories.
 
-    Searches up the directory tree until it finds a .jira-agent.yaml file
+    Searches up the directory tree until it finds a .jirade.yaml file
     or reaches the git root (or filesystem root).
 
     Args:
@@ -34,7 +34,7 @@ def find_repo_config(start_path: Path | None = None) -> Path | None:
             return config_path
 
         # Also check for .yml extension
-        config_path_yml = current / ".jira-agent.yml"
+        config_path_yml = current / ".jirade.yml"
         if config_path_yml.exists():
             return config_path_yml
 
@@ -199,7 +199,7 @@ class ConfigLoader:
     def auto_detect(self, start_path: Path | None = None) -> RepoConfig | None:
         """Auto-detect and load config from current directory.
 
-        Searches for .jira-agent.yaml in current directory and parents.
+        Searches for .jirade.yaml in current directory and parents.
 
         Args:
             start_path: Directory to start searching from. Defaults to cwd.

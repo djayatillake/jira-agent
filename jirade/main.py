@@ -1,31 +1,31 @@
 """Jira Ticket Automation Agent CLI.
 
 Usage:
-    jira-agent init [--output=<path>]
-    jira-agent list-tickets [--config=<path>] [--status=<status>] [--limit=<n>] [--interactive]
-    jira-agent list-prs [--config=<path>] [--state=<state>]
-    jira-agent watch [--config=<path>] [--interval=<seconds>]
-    jira-agent process [--config=<path>] [--status=<status>] [--limit=<n>] [--dry-run]
-    jira-agent process-ticket <ticket_key> [--config=<path>] [--dry-run]
-    jira-agent check-pr <pr_number> [--config=<path>]
-    jira-agent fix-ci <pr_number> [--config=<path>]
-    jira-agent serve [--port=<port>] [--host=<host>] [--config-dir=<dir>]
-    jira-agent auth login [--service=<service>]
-    jira-agent auth status
-    jira-agent auth logout [--service=<service>]
-    jira-agent config show
-    jira-agent config validate <config_path>
-    jira-agent health [--config=<path>]
-    jira-agent learn status
-    jira-agent learn publish [--dry-run] [--jira-agent-repo=<repo>]
-    jira-agent learn list [--category=<cat>]
-    jira-agent env check [--config=<path>] [--repo-path=<path>]
-    jira-agent env setup [--config=<path>] [--repo-path=<path>]
-    jira-agent --help
-    jira-agent --version
+    jirade init [--output=<path>]
+    jirade list-tickets [--config=<path>] [--status=<status>] [--limit=<n>] [--interactive]
+    jirade list-prs [--config=<path>] [--state=<state>]
+    jirade watch [--config=<path>] [--interval=<seconds>]
+    jirade process [--config=<path>] [--status=<status>] [--limit=<n>] [--dry-run]
+    jirade process-ticket <ticket_key> [--config=<path>] [--dry-run]
+    jirade check-pr <pr_number> [--config=<path>]
+    jirade fix-ci <pr_number> [--config=<path>]
+    jirade serve [--port=<port>] [--host=<host>] [--config-dir=<dir>]
+    jirade auth login [--service=<service>]
+    jirade auth status
+    jirade auth logout [--service=<service>]
+    jirade config show
+    jirade config validate <config_path>
+    jirade health [--config=<path>]
+    jirade learn status
+    jirade learn publish [--dry-run] [--jirade-repo=<repo>]
+    jirade learn list [--category=<cat>]
+    jirade env check [--config=<path>] [--repo-path=<path>]
+    jirade env setup [--config=<path>] [--repo-path=<path>]
+    jirade --help
+    jirade --version
 
 Commands:
-    init            Initialize jira-agent for a repository (interactive setup)
+    init            Initialize jirade for a repository (interactive setup)
     list-tickets    List tickets from a Jira board
     list-prs        List open PRs for the repository
     watch           Poll for merged PRs and auto-transition tickets to Done
@@ -43,7 +43,7 @@ Commands:
 Options:
     -h --help                Show this help message
     --version                Show version
-    --config=<path>          Path to repo config file (auto-detects .jira-agent.yaml if not specified)
+    --config=<path>          Path to repo config file (auto-detects .jirade.yaml if not specified)
     --status=<status>        Filter tickets by Jira status (e.g., "To Do", "Ready for Dev")
     --state=<state>          Filter PRs by state: open, closed, all [default: open]
     --limit=<n>              Maximum tickets to process [default: 10]
@@ -53,74 +53,74 @@ Options:
     --port=<port>            Webhook server port [default: 8080]
     --host=<host>            Webhook server host [default: 0.0.0.0]
     --config-dir=<dir>       Directory containing repo config files [default: ./configs]
-    --output=<path>          Output path for generated config [default: .jira-agent.yaml]
+    --output=<path>          Output path for generated config [default: .jirade.yaml]
     --service=<service>      Service to authenticate: jira, github, databricks, or all [default: all]
-    --jira-agent-repo=<repo> GitHub repo for jira-agent [default: djayatillake/jira-agent]
+    --jirade-repo=<repo> GitHub repo for jirade [default: djayatillake/jirade]
     --category=<cat>         Filter learnings by category: ci-failure, code-pattern, error-resolution
     --repo-path=<path>       Path to local repository to check/setup
 
 Environment Variables:
     ANTHROPIC_API_KEY           Anthropic API key (or enter during 'init')
-    JIRA_AGENT_JIRA_OAUTH_CLIENT_ID      Jira OAuth app client ID
-    JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET  Jira OAuth app client secret
-    JIRA_AGENT_GITHUB_TOKEN              GitHub personal access token
-    JIRA_AGENT_DATABRICKS_HOST           Databricks workspace URL
-    JIRA_AGENT_DATABRICKS_TOKEN          Databricks personal access token
-    JIRA_AGENT_WEBHOOK_SECRET            Secret for webhook validation
+    JIRADE_JIRA_OAUTH_CLIENT_ID      Jira OAuth app client ID
+    JIRADE_JIRA_OAUTH_CLIENT_SECRET  Jira OAuth app client secret
+    JIRADE_GITHUB_TOKEN              GitHub personal access token
+    JIRADE_DATABRICKS_HOST           Databricks workspace URL
+    JIRADE_DATABRICKS_TOKEN          Databricks personal access token
+    JIRADE_WEBHOOK_SECRET            Secret for webhook validation
 
 Credential Storage:
     API keys entered during 'init' are stored securely in:
     - macOS: Keychain
     - Linux: Secret Service (GNOME Keyring/KWallet)
     - Windows: Windows Credential Manager
-    - Fallback: ~/.jira-agent/tokens/ (with 0600 permissions)
+    - Fallback: ~/.jirade/tokens/ (with 0600 permissions)
 
 Examples:
-    # GETTING STARTED - Initialize jira-agent in your repo
+    # GETTING STARTED - Initialize jirade in your repo
     cd ~/repos/my-data-repo
-    jira-agent init
+    jirade init
     # Prompts for Jira project key, board ID, etc.
-    # Creates .jira-agent.yaml in repo root
+    # Creates .jirade.yaml in repo root
 
-    # Once initialized, all commands auto-detect config from .jira-agent.yaml
-    jira-agent list-tickets                    # Lists tickets for this repo
-    jira-agent process-ticket AENG-1234        # Process a specific ticket
-    jira-agent process --status="Ready for Dev" --limit=5  # Process multiple
+    # Once initialized, all commands auto-detect config from .jirade.yaml
+    jirade list-tickets                    # Lists tickets for this repo
+    jirade process-ticket AENG-1234        # Process a specific ticket
+    jirade process --status="Ready for Dev" --limit=5  # Process multiple
 
     # Or specify a config file explicitly
-    jira-agent list-tickets --config configs/my-repo.yaml
+    jirade list-tickets --config configs/my-repo.yaml
 
     # Authenticate with services (required before using agent)
-    jira-agent auth login          # Login to all services
-    jira-agent auth status         # Check authentication status
+    jirade auth login          # Login to all services
+    jirade auth status         # Check authentication status
 
     # Test all service connections
-    jira-agent health              # Test connections
-    jira-agent health --config .jira-agent.yaml  # Test with specific config
+    jirade health              # Test connections
+    jirade health --config .jirade.yaml  # Test with specific config
 
     # Interactive mode: browse and select a ticket to process
-    jira-agent list-tickets --interactive
-    jira-agent list-tickets --status="To Do" --interactive
+    jirade list-tickets --interactive
+    jirade list-tickets --status="To Do" --interactive
 
     # List open PRs
-    jira-agent list-prs
+    jirade list-prs
 
     # Watch for merged PRs and auto-transition tickets
-    jira-agent watch                        # Poll every 60s
-    jira-agent watch --interval=120         # Poll every 2 minutes
+    jirade watch                        # Poll every 60s
+    jirade watch --interval=120         # Poll every 2 minutes
 
     # Start webhook server (for CI/CD integration)
-    jira-agent serve --port 8080 --config-dir ./configs
+    jirade serve --port 8080 --config-dir ./configs
 
     # Agent learnings (captured from resolved failures)
-    jira-agent learn status                 # View pending learnings
-    jira-agent learn publish                # Create PR with learnings
-    jira-agent learn publish --dry-run      # Preview only
-    jira-agent learn list --category=ci-failure
+    jirade learn status                 # View pending learnings
+    jirade learn publish                # Create PR with learnings
+    jirade learn publish --dry-run      # Preview only
+    jirade learn list --category=ci-failure
 
     # Environment management
-    jira-agent env check                    # Check current repo environment
-    jira-agent env setup                    # Auto-install missing dependencies
+    jirade env check                    # Check current repo environment
+    jirade env setup                    # Auto-install missing dependencies
 """
 
 import asyncio
@@ -142,7 +142,7 @@ def load_config_with_fallback(args: dict, required: bool = True):
 
     Tries in order:
     1. Explicit --config path
-    2. Auto-detect .jira-agent.yaml in current directory
+    2. Auto-detect .jirade.yaml in current directory
 
     Args:
         args: CLI arguments dict.
@@ -168,7 +168,7 @@ def load_config_with_fallback(args: dict, required: bool = True):
     if required:
         print("Error: No config found.")
         print("Either:")
-        print("  1. Run 'jira-agent init' to create .jira-agent.yaml in this repo")
+        print("  1. Run 'jirade init' to create .jirade.yaml in this repo")
         print("  2. Specify --config=<path> to a config file")
         sys.exit(1)
 
@@ -177,7 +177,7 @@ def load_config_with_fallback(args: dict, required: bool = True):
 
 def main() -> int:
     """Main entry point for the CLI."""
-    args = docopt(__doc__, version=f"jira-agent {__version__}")
+    args = docopt(__doc__, version=f"jirade {__version__}")
 
     settings = get_settings()
     setup_logging(settings.log_level)
@@ -308,7 +308,7 @@ async def handle_list_tickets(args: dict, settings) -> int:
 
     auth_manager = AuthManager(settings)
     if not auth_manager.jira.is_authenticated():
-        print("Error: Not authenticated with Jira. Run: jira-agent auth login --service=jira")
+        print("Error: Not authenticated with Jira. Run: jirade auth login --service=jira")
         return 1
 
     access_token = auth_manager.jira.get_access_token()
@@ -474,7 +474,7 @@ async def _interactive_ticket_selection(
         print(f"Assignee: {assignee.get('displayName') if assignee else 'Unassigned'}")
         print()
         print("To process this ticket, run:")
-        print(f"  jira-agent process-ticket {ticket_key}")
+        print(f"  jirade process-ticket {ticket_key}")
         return 0
 
     # Process the ticket
@@ -599,7 +599,7 @@ async def handle_watch(args: dict, settings) -> int:
 
     auth_manager = AuthManager(settings)
     if not auth_manager.jira.is_authenticated():
-        print("Error: Not authenticated with Jira. Run: jira-agent auth login --service=jira")
+        print("Error: Not authenticated with Jira. Run: jirade auth login --service=jira")
         return 1
 
     # Load tracked PRs
@@ -961,7 +961,7 @@ def _post_pr_flow(
         return asyncio.run(handle_watch(watch_args, settings))
     else:
         print()
-        print("You can watch later with: jira-agent watch")
+        print("You can watch later with: jirade watch")
         print("The agent will find your PRs and respond to any that need attention.")
 
     return 0
@@ -1073,7 +1073,7 @@ def handle_serve(args: dict, settings) -> int:
 
 
 def handle_init(args: dict, settings) -> int:
-    """Interactive setup for jira-agent in a repository."""
+    """Interactive setup for jirade in a repository."""
     import questionary
     from questionary import Style
 
@@ -1179,7 +1179,7 @@ def handle_init(args: dict, settings) -> int:
         print("     gh auth login")
         print()
         print("  2. Or set a personal access token:")
-        print("     export JIRA_AGENT_GITHUB_TOKEN='your-token-here'")
+        print("     export JIRADE_GITHUB_TOKEN='your-token-here'")
         print()
         all_credentials_ok = False
 
@@ -1423,7 +1423,7 @@ def handle_init(args: dict, settings) -> int:
     output_path = args.get("--output") or REPO_CONFIG_FILENAME
 
     config_content = f"""# Jira Agent configuration for {owner}/{name}
-# Generated by: jira-agent init
+# Generated by: jirade init
 
 repo:
   owner: "{owner}"
@@ -1483,9 +1483,9 @@ learning:
     print()
     print("Next steps:")
     print("  1. Review and customize the config if needed")
-    print("  2. Run 'jira-agent auth login' if not authenticated")
-    print("  3. Run 'jira-agent health' to test connections")
-    print("  4. Run 'jira-agent list-tickets' to see available tickets")
+    print("  2. Run 'jirade auth login' if not authenticated")
+    print("  3. Run 'jirade health' to test connections")
+    print("  4. Run 'jirade list-tickets' to see available tickets")
     print()
 
     return 0
@@ -1584,7 +1584,7 @@ async def handle_health(args: dict, settings) -> int:
             all_ok = False
     else:
         print("  Status: NOT AUTHENTICATED")
-        print("  Run: jira-agent auth login --service=jira")
+        print("  Run: jirade auth login --service=jira")
         all_ok = False
 
     print()
@@ -1631,7 +1631,7 @@ async def handle_health(args: dict, settings) -> int:
             all_ok = False
     else:
         print("  Status: NOT CONFIGURED")
-        print("  Either run 'gh auth login' or set JIRA_AGENT_GITHUB_TOKEN")
+        print("  Either run 'gh auth login' or set JIRADE_GITHUB_TOKEN")
         all_ok = False
 
     print()
@@ -1705,32 +1705,32 @@ def handle_learn_status(args: dict, settings) -> int:
             print(f"    Ticket: {learning.ticket}, Subcategory: {learning.subcategory}")
 
     print()
-    print(f"Run 'jira-agent learn publish' to create a PR with these learnings.")
+    print(f"Run 'jirade learn publish' to create a PR with these learnings.")
     return 0
 
 
 def handle_learn_publish(args: dict, settings) -> int:
-    """Publish learnings to jira-agent repo."""
+    """Publish learnings to jirade repo."""
     from .learning import LearningPublisher
 
     dry_run = args.get("--dry-run", False)
-    jira_agent_repo = args.get("--jira-agent-repo") or getattr(
-        settings, "jira_agent_repo", "djayatillake/jira-agent"
+    jirade_repo = args.get("--jirade-repo") or getattr(
+        settings, "jirade_repo", "djayatillake/jirade"
     )
 
     if not settings.has_github_token:
         print("Error: GitHub token not configured")
-        print("Either run 'gh auth login' or set JIRA_AGENT_GITHUB_TOKEN")
+        print("Either run 'gh auth login' or set JIRADE_GITHUB_TOKEN")
         return 1
 
-    print(f"Publishing learnings to {jira_agent_repo}...")
+    print(f"Publishing learnings to {jirade_repo}...")
     if dry_run:
         print("(dry-run mode)")
     print()
 
     publisher = LearningPublisher(
         github_token=settings.github_token,
-        jira_agent_repo=jira_agent_repo,
+        jirade_repo=jirade_repo,
         workspace_dir=settings.workspace_dir,
     )
 
@@ -1769,10 +1769,10 @@ def handle_learn_list(args: dict, settings) -> int:
 
     category_filter = args.get("--category")
 
-    # Try to find knowledge base in current directory or jira-agent clone
+    # Try to find knowledge base in current directory or jirade clone
     kb_paths = [
         Path.cwd() / KNOWLEDGE_BASE_DIR,
-        settings.workspace_dir / "djayatillake-jira-agent" / KNOWLEDGE_BASE_DIR,
+        settings.workspace_dir / "djayatillake-jirade" / KNOWLEDGE_BASE_DIR,
         Path(__file__).parent.parent / KNOWLEDGE_BASE_DIR,
     ]
 
@@ -1967,7 +1967,7 @@ def handle_env_check(args: dict, settings, auto_install: bool = False) -> int:
 
     missing_python, missing_node = parser.get_missing_packages()
     if (missing_python or missing_node) and not auto_install:
-        print("✗ Missing packages. Run 'jira-agent env setup' to install.")
+        print("✗ Missing packages. Run 'jirade env setup' to install.")
         return 1
 
     print("✓ Environment is ready!")

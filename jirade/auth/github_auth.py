@@ -80,7 +80,7 @@ class GitHubAuth:
         if not self.client_id or not self.client_secret:
             raise Exception(
                 "GitHub OAuth credentials not configured. "
-                "Use a Personal Access Token instead: jira-agent auth login --service=github"
+                "Use a Personal Access Token instead: jirade auth login --service=github"
             )
 
         server = LocalOAuthServer(port=self.callback_port)
@@ -142,7 +142,7 @@ class GitHubAuth:
         """Get the GitHub access token.
 
         Checks in order:
-        1. Token stored via jira-agent auth login
+        1. Token stored via jirade auth login
         2. Token from gh CLI (if installed and authenticated)
 
         Returns:
@@ -161,7 +161,7 @@ class GitHubAuth:
         if gh_token:
             return gh_token
 
-        raise Exception("Not authenticated with GitHub. Please run: jira-agent auth login")
+        raise Exception("Not authenticated with GitHub. Please run: jirade auth login")
 
     def _get_gh_cli_token(self) -> str | None:
         """Get GitHub token from gh CLI if available.

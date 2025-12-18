@@ -30,9 +30,9 @@ RUN poetry install --no-interaction --no-ansi
 RUN mkdir -p /workspace
 
 # Set environment variables
-ENV JIRA_AGENT_WORKSPACE_DIR=/workspace
+ENV JIRADE_WORKSPACE_DIR=/workspace
 ENV PYTHONUNBUFFERED=1
 
 # Default command
-ENTRYPOINT ["jira-agent"]
+ENTRYPOINT ["jirade"]
 CMD ["--help"]

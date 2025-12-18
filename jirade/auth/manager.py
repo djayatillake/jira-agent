@@ -60,7 +60,7 @@ class AuthManager:
         """Handle Jira login."""
         if not self.settings.has_jira_oauth:
             print("Jira OAuth credentials not configured.")
-            print("Set JIRA_AGENT_JIRA_OAUTH_CLIENT_ID and JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET")
+            print("Set JIRADE_JIRA_OAUTH_CLIENT_ID and JIRADE_JIRA_OAUTH_CLIENT_SECRET")
             return
 
         try:
@@ -95,7 +95,7 @@ class AuthManager:
         """Handle Databricks login."""
         if not self.settings.has_databricks:
             print("Databricks credentials not configured.")
-            print("Set JIRA_AGENT_DATABRICKS_HOST and JIRA_AGENT_DATABRICKS_TOKEN")
+            print("Set JIRADE_DATABRICKS_HOST and JIRADE_DATABRICKS_TOKEN")
             return
 
         # Validate Databricks connection

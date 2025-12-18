@@ -1,4 +1,4 @@
-"""Environment checking and setup for the jira-agent."""
+"""Environment checking and setup for the jirade."""
 
 from .checker import EnvironmentChecker
 from .installer import PackageInstaller

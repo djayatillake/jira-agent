@@ -77,11 +77,11 @@ poetry.lock
 # Project specific
 workspace/
 *.log
-.jira-agent/
+.jirade/
 
 # Secrets (never commit these!)
 *_tokens.json
 credentials.json
 secrets.yaml
 .env.local
-.jira-agent.yaml
+.jirade.yaml

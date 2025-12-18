@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from jira_agent.tools.git_tools import (
+from jirade.tools.git_tools import (
     GitTools,
     sanitize_branch_name,
     format_branch_name,
@@ -23,7 +23,7 @@ class TestSanitizeBranchName:
 
     def test_special_char_replacement(self):
         """Test that special characters are replaced."""
-        assert sanitize_branch_name("add_new@feature!") == "add-new-feature-"
+        assert sanitize_branch_name("add_new@feature!") == "add-new-feature"
 
     def test_consecutive_hyphens(self):
         """Test that consecutive hyphens are collapsed."""

@@ -4,7 +4,7 @@ import json
 import pytest
 from pathlib import Path
 
-from jira_agent.tools.dbt_tools import DbtTools, parse_dbt_error
+from jirade.tools.dbt_tools import DbtTools, parse_dbt_error
 
 
 class TestDbtTools:

@@ -1,4 +1,4 @@
-"""Logging configuration for the Jira Agent."""
+"""Logging configuration for Jirade."""
 
 import logging
 import sys
@@ -66,7 +66,7 @@ class TicketLogger:
             ticket_key: The Jira ticket key (e.g., AENG-1234).
         """
         self.ticket_key = ticket_key
-        self.logger = logging.getLogger(f"jira_agent.ticket.{ticket_key}")
+        self.logger = logging.getLogger(f"jirade.ticket.{ticket_key}")
 
     def info(self, message: str) -> None:
         """Log info message with ticket context."""

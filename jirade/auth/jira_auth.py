@@ -184,7 +184,7 @@ class JiraOAuth:
         tokens = self.token_store.get("jira")
 
         if not tokens:
-            raise Exception("Not authenticated with Jira. Please run: jira-agent auth login")
+            raise Exception("Not authenticated with Jira. Please run: jirade auth login")
 
         # Check if token is expired (with buffer)
         if self.token_store.is_expired("jira", buffer_seconds=300):
@@ -204,7 +204,7 @@ class JiraOAuth:
         tokens = self.token_store.get("jira")
 
         if not tokens or "cloud_id" not in tokens:
-            raise Exception("Not authenticated with Jira. Please run: jira-agent auth login")
+            raise Exception("Not authenticated with Jira. Please run: jirade auth login")
 
         return tokens["cloud_id"]
 

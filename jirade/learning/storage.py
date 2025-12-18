@@ -12,7 +12,7 @@ from .models import Learning, LearningCategory, LearningConfidence
 logger = logging.getLogger(__name__)
 
 # Directory name for learnings in target repos
-LEARNINGS_DIR = ".jira-agent/learnings"
+LEARNINGS_DIR = ".jirade/learnings"
 
 
 class LearningStorage:
@@ -24,7 +24,7 @@ class LearningStorage:
         Args:
             workspace_dir: Base workspace directory where repos are cloned.
         """
-        self.workspace_dir = workspace_dir or Path("/tmp/jira-agent")
+        self.workspace_dir = workspace_dir or Path("/tmp/jirade")
 
     def save_to_target_repo(self, learning: Learning, repo_path: Path) -> Path:
         """Save a learning to the target repo's learnings directory.
@@ -100,7 +100,7 @@ class LearningStorage:
 
         Args:
             learning: The learning to render.
-            anonymize: If True, remove org-specific data (for publishing to jira-agent).
+            anonymize: If True, remove org-specific data (for publishing to jirade).
 
         Returns:
             Markdown string.

@@ -4,8 +4,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from jira_agent.config import AgentSettings
-from jira_agent.repo_config.schema import (
+from jirade.config import AgentSettings
+from jirade.repo_config.schema import (
     RepoConfig,
     RepoIdentification,
     JiraConfig,

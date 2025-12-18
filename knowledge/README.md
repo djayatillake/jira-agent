@@ -1,6 +1,6 @@
-# Jira Agent Knowledge Base
+# Jirade Knowledge Base
 
-This directory contains accumulated learnings from the jira-agent's operation across repositories.
+This directory contains accumulated learnings from the jirade's operation across repositories.
 
 ## Structure
 

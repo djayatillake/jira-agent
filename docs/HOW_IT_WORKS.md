@@ -1,6 +1,6 @@
-# How the Jira Agent Works
+# How the Jirade Works
 
-This document explains the internal architecture of the Jira Agent - an autonomous system that processes Jira tickets and implements code changes using Claude as the reasoning engine.
+This document explains the internal architecture of the Jirade - an autonomous system that processes Jira tickets and implements code changes using Claude as the reasoning engine.
 
 > **Looking to get started?** See the [README](../README.md) for installation instructions, prerequisites, and setup guides.
 
@@ -22,7 +22,7 @@ This document explains the internal architecture of the Jira Agent - an autonomo
 
 ## Overview
 
-The Jira Agent automates the software development workflow:
+The Jirade automates the software development workflow:
 
 1. **Monitors Jira** for tickets in a configurable status (e.g., "Ready for Agent")
 2. **Analyzes tickets** to understand what changes are needed
@@ -115,7 +115,7 @@ Your task is to implement changes to the repository based on Jira ticket require
 ## Repository Information
 - Owner: acme
 - Name: data
-- Path: /tmp/jira-agent/acme-data
+- Path: /tmp/jirade/acme-data
 - Default Branch: main
 - PR Target: develop
 
@@ -662,7 +662,7 @@ The agent can be triggered in two ways:
 #### 1. Polling Mode (Recommended for Local Development)
 
 ```bash
-jira-agent watch --config configs/acme-data.yaml --interval=60
+jirade watch --config configs/acme-data.yaml --interval=60
 ```
 
 The watch command polls both services:
@@ -698,7 +698,7 @@ The webhook server listens for events:
 | GitHub | `pull_request` (closed, merged) | PR merged |
 
 ```bash
-jira-agent serve --port 8080 --config-dir ./configs
+jirade serve --port 8080 --config-dir ./configs
 ```
 
 ### CI Failure Handling
@@ -959,7 +959,7 @@ For manual work, the agent provides an interactive CLI that lets you browse and 
 ### Usage
 
 ```bash
-jira-agent list-tickets --config configs/your-repo.yaml --interactive
+jirade list-tickets --config configs/your-repo.yaml --interactive
 ```
 
 ### How It Works
@@ -1112,7 +1112,7 @@ New triggers can be added by:
 Enable debug logging:
 ```bash
 export LOG_LEVEL=DEBUG
-jira-agent process-ticket AENG-1234 --config configs/acme-data.yaml
+jirade process-ticket AENG-1234 --config configs/acme-data.yaml
 ```
 
 Check the agentic loop iterations in logs to see Claude's reasoning and tool calls.

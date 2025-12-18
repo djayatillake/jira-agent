@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from jira_agent.repo_config.schema import RepoConfig, RepoIdentification, JiraConfig
-from jira_agent.repo_config.loader import ConfigLoader
+from jirade.repo_config.schema import RepoConfig, RepoIdentification, JiraConfig
+from jirade.repo_config.loader import ConfigLoader
 
 
 class TestRepoConfig:

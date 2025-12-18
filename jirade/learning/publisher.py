@@ -1,4 +1,4 @@
-"""Publish learnings to jira-agent repo via PR."""
+"""Publish learnings to jirade repo via PR."""
 
 import logging
 import os
@@ -13,7 +13,7 @@ from .storage import LearningStorage
 
 logger = logging.getLogger(__name__)
 
-# Knowledge base structure in jira-agent repo
+# Knowledge base structure in jirade repo
 KNOWLEDGE_BASE_DIR = "knowledge"
 CATEGORY_DIRS = {
     LearningCategory.CI_FAILURE: "ci-failures",
@@ -23,31 +23,31 @@ CATEGORY_DIRS = {
 
 
 class LearningPublisher:
-    """Publishes accumulated learnings to jira-agent repo via PR."""
+    """Publishes accumulated learnings to jirade repo via PR."""
 
     def __init__(
         self,
         github_token: str,
-        jira_agent_repo: str = "djayatillake/jira-agent",
+        jirade_repo: str = "djayatillake/jirade",
         workspace_dir: Path | None = None,
     ):
         """Initialize publisher.
 
         Args:
             github_token: GitHub token for authentication.
-            jira_agent_repo: Repository for jira-agent (owner/name).
+            jirade_repo: Repository for jirade (owner/name).
             workspace_dir: Directory where repos are cloned.
         """
         self.github_token = github_token
-        self.jira_agent_repo = jira_agent_repo
-        self.workspace_dir = workspace_dir or Path("/tmp/jira-agent")
+        self.jirade_repo = jirade_repo
+        self.workspace_dir = workspace_dir or Path("/tmp/jirade")
 
         # Parse owner/name
-        if "/" in jira_agent_repo:
-            self.repo_owner, self.repo_name = jira_agent_repo.split("/", 1)
+        if "/" in jirade_repo:
+            self.repo_owner, self.repo_name = jirade_repo.split("/", 1)
         else:
             self.repo_owner = "djayatillake"
-            self.repo_name = jira_agent_repo
+            self.repo_name = jirade_repo
 
     def collect_learnings(self, target_repos: list[Path] | None = None) -> list[Learning]:
         """Collect learnings from target repos.
@@ -155,7 +155,7 @@ class LearningPublisher:
             filename = f"{timestamp_str}-{learning.id}-{safe_subcategory}.md"
 
             file_path = kb_path / category_dir / filename
-            # Anonymize when publishing to jira-agent repo
+            # Anonymize when publishing to jirade repo
             content = storage.render_markdown(learning, anonymize=True)
 
             # Ensure parent directory exists
@@ -172,7 +172,7 @@ class LearningPublisher:
         dry_run: bool = False,
         branch_prefix: str = "learn",
     ) -> dict:
-        """Publish learnings to jira-agent repo via PR.
+        """Publish learnings to jirade repo via PR.
 
         Args:
             learnings: Learnings to publish. If None, collects from workspace.
@@ -189,7 +189,7 @@ class LearningPublisher:
         if not learnings:
             return {"status": "no_learnings", "message": "No learnings to publish"}
 
-        # Clone jira-agent repo
+        # Clone jirade repo
         git = GitTools(self.workspace_dir, self.github_token)
         repo_path = git.clone_repo(self.repo_owner, self.repo_name)
 
@@ -253,7 +253,7 @@ class LearningPublisher:
         branch_name: str,
         learnings: list[Learning],
     ) -> str:
-        """Create a pull request to jira-agent repo.
+        """Create a pull request to jirade repo.
 
         Args:
             branch_name: Branch with changes.
@@ -331,7 +331,7 @@ class LearningPublisher:
         removed_count = 0
 
         for repo_path in repo_paths:
-            learnings_dir = repo_path / ".jira-agent" / "learnings"
+            learnings_dir = repo_path / ".jirade" / "learnings"
             if not learnings_dir.exists():
                 continue
 

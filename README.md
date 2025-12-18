@@ -1,4 +1,4 @@
-# Jira Agent
+# Jirade
 
 An autonomous agent that processes Jira tickets and implements code changes using Claude Opus 4.5.
 
@@ -59,7 +59,7 @@ flowchart TD
 
 ## Prerequisites
 
-Before installing the Jira Agent, ensure you have the following:
+Before installing the Jirade, ensure you have the following:
 
 ### Required
 
@@ -100,16 +100,16 @@ brew install pipx  # macOS
 
 pipx ensurepath  # Add pipx binaries to PATH (restart shell after)
 
-# Install jira-agent
-pipx install git+https://github.com/djayatillake/jira-agent.git
+# Install jirade
+pipx install git+https://github.com/djayatillake/jirade.git
 
 # Verify installation
-jira-agent --help
+jirade --help
 ```
 
 To upgrade to the latest version:
 ```bash
-pipx upgrade jira-agent
+pipx upgrade jirade
 ```
 
 ### Development Install
@@ -118,18 +118,18 @@ For contributing or modifying the code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/djayatillake/jira-agent.git
-cd jira-agent
+git clone https://github.com/djayatillake/jirade.git
+cd jirade
 
 # Install dependencies
 poetry install
 
 # Run via poetry
-poetry run jira-agent --help
+poetry run jirade --help
 
 # Or activate poetry shell for direct commands
 poetry shell
-jira-agent --help
+jirade --help
 ```
 
 ### Initial Setup
@@ -137,13 +137,13 @@ jira-agent --help
 After installation, run the interactive setup:
 
 ```bash
-jira-agent init
+jirade init
 ```
 
 This will:
 1. Check for required credentials (Anthropic API key, GitHub token, Jira OAuth)
 2. Prompt you to enter any missing credentials (stored securely in your system keyring)
-3. Create a `.jira-agent.yaml` config file in your repository
+3. Create a `.jirade.yaml` config file in your repository
 
 #### Environment Variables (Alternative)
 
@@ -158,8 +158,8 @@ You can also configure credentials via environment variables:
 ANTHROPIC_API_KEY="sk-ant-..."
 
 # Jira OAuth Credentials (see "Jira OAuth Setup" section below)
-JIRA_AGENT_JIRA_OAUTH_CLIENT_ID="your-client-id"
-JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
+JIRADE_JIRA_OAUTH_CLIENT_ID="your-client-id"
+JIRADE_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
 
 # ===========================================
 # GITHUB (choose one method)
@@ -170,38 +170,38 @@ JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
 # The agent will automatically use your gh CLI token.
 
 # Method 2: Set token manually (only if not using gh CLI)
-# JIRA_AGENT_GITHUB_TOKEN="ghp_..."
+# JIRADE_GITHUB_TOKEN="ghp_..."
 
 # ===========================================
 # OPTIONAL
 # ===========================================
 
 # Databricks (if your repo uses dbt with Databricks)
-# JIRA_AGENT_DATABRICKS_HOST="https://your-workspace.databricks.com"
-# JIRA_AGENT_DATABRICKS_TOKEN="dapi..."
+# JIRADE_DATABRICKS_HOST="https://your-workspace.databricks.com"
+# JIRADE_DATABRICKS_TOKEN="dapi..."
 
 # Webhook server secret (for production webhook validation)
-# JIRA_AGENT_WEBHOOK_SECRET="your-secret"
+# JIRADE_WEBHOOK_SECRET="your-secret"
 
 # Logging level (DEBUG, INFO, WARNING, ERROR)
-# JIRA_AGENT_LOG_LEVEL="INFO"
+# JIRADE_LOG_LEVEL="INFO"
 
 # Workspace directory (where repos are cloned)
-# JIRA_AGENT_WORKSPACE_DIR="/tmp/jira-agent"
+# JIRADE_WORKSPACE_DIR="/tmp/jirade"
 ```
 
 ### Step 4: Authenticate
 
 ```bash
 # Authenticate with all services
-jira-agent auth login
+jirade auth login
 
 # Or authenticate individually
-jira-agent auth login --service=jira
-jira-agent auth login --service=github
+jirade auth login --service=jira
+jirade auth login --service=github
 
 # Check authentication status
-jira-agent auth status
+jirade auth status
 ```
 
 Expected output:
@@ -217,7 +217,7 @@ Databricks: ✗ Not configured
 
 ```bash
 # Run health check to verify all connections
-jira-agent health --config configs/your-repo.yaml
+jirade health --config configs/your-repo.yaml
 ```
 
 Expected output:
@@ -259,7 +259,7 @@ The agent uses Jira OAuth 2.0 (3LO) for authentication. Here's how to set it up:
 
 1. Go to [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/)
 2. Click **Create** → **OAuth 2.0 integration**
-3. Give it a name (e.g., "Jira Agent")
+3. Give it a name (e.g., "Jirade")
 4. Click **Create**
 
 ### Step 2: Configure Permissions
@@ -286,14 +286,14 @@ The agent uses Jira OAuth 2.0 (3LO) for authentication. Here's how to set it up:
 3. Add them to your environment:
 
 ```bash
-export JIRA_AGENT_JIRA_OAUTH_CLIENT_ID="your-client-id"
-export JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
+export JIRADE_JIRA_OAUTH_CLIENT_ID="your-client-id"
+export JIRADE_JIRA_OAUTH_CLIENT_SECRET="your-client-secret"
 ```
 
 ### Step 5: Authenticate
 
 ```bash
-jira-agent auth login --service=jira
+jirade auth login --service=jira
 ```
 
 This will:
@@ -336,7 +336,7 @@ If you prefer not to use `gh` CLI:
 4. Copy the token and set it:
 
 ```bash
-export JIRA_AGENT_GITHUB_TOKEN="ghp_..."
+export JIRADE_GITHUB_TOKEN="ghp_..."
 ```
 
 ---
@@ -348,7 +348,7 @@ Each repository you want to work with needs a configuration file.
 ### Generate a Config
 
 ```bash
-jira-agent init-config your-org/your-repo --output configs/your-repo.yaml
+jirade init-config your-org/your-repo --output configs/your-repo.yaml
 ```
 
 ### Example Configuration
@@ -422,7 +422,7 @@ ci:
 Browse and select tickets with arrow keys:
 
 ```bash
-jira-agent list-tickets --config configs/your-repo.yaml --interactive
+jirade list-tickets --config configs/your-repo.yaml --interactive
 ```
 
 This shows:
@@ -458,10 +458,10 @@ Run the agent continuously to process tickets automatically:
 
 ```bash
 # Watch for tickets in "Ready for Agent" status
-jira-agent watch --config configs/your-repo.yaml
+jirade watch --config configs/your-repo.yaml
 
 # With custom polling interval (default: 60 seconds)
-jira-agent watch --config configs/your-repo.yaml --interval=30
+jirade watch --config configs/your-repo.yaml --interval=30
 ```
 
 Output:
@@ -485,53 +485,53 @@ Press Ctrl+C to stop
 
 ```bash
 # Process a specific ticket
-jira-agent process-ticket PROJ-123 --config configs/your-repo.yaml
+jirade process-ticket PROJ-123 --config configs/your-repo.yaml
 
 # Process with dry-run (preview only)
-jira-agent process-ticket PROJ-123 --config configs/your-repo.yaml --dry-run
+jirade process-ticket PROJ-123 --config configs/your-repo.yaml --dry-run
 
 # Process multiple tickets by status
-jira-agent process --config configs/your-repo.yaml --status="Ready for Dev" --limit=5
+jirade process --config configs/your-repo.yaml --status="Ready for Dev" --limit=5
 ```
 
 ### List Commands
 
 ```bash
 # List tickets
-jira-agent list-tickets --config configs/your-repo.yaml
-jira-agent list-tickets --config configs/your-repo.yaml --status="To Do"
-jira-agent list-tickets --config configs/your-repo.yaml --limit=20
+jirade list-tickets --config configs/your-repo.yaml
+jirade list-tickets --config configs/your-repo.yaml --status="To Do"
+jirade list-tickets --config configs/your-repo.yaml --limit=20
 
 # List PRs
-jira-agent list-prs --config configs/your-repo.yaml
-jira-agent list-prs --config configs/your-repo.yaml --state=closed
+jirade list-prs --config configs/your-repo.yaml
+jirade list-prs --config configs/your-repo.yaml --state=closed
 ```
 
 ### PR Management
 
 ```bash
 # Check PR status
-jira-agent check-pr 123 --config configs/your-repo.yaml
+jirade check-pr 123 --config configs/your-repo.yaml
 
 # Attempt to fix CI failures
-jira-agent fix-ci 123 --config configs/your-repo.yaml
+jirade fix-ci 123 --config configs/your-repo.yaml
 ```
 
 ### Health & Diagnostics
 
 ```bash
 # Check all service connections
-jira-agent health
-jira-agent health --config configs/your-repo.yaml
+jirade health
+jirade health --config configs/your-repo.yaml
 
 # Show current configuration
-jira-agent config show
+jirade config show
 
 # Validate a config file
-jira-agent config validate configs/your-repo.yaml
+jirade config validate configs/your-repo.yaml
 
 # Check auth status
-jira-agent auth status
+jirade auth status
 ```
 
 ---
@@ -563,15 +563,15 @@ jira-agent auth status
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
-| `JIRA_AGENT_JIRA_OAUTH_CLIENT_ID` | Yes | Jira OAuth app client ID |
-| `JIRA_AGENT_JIRA_OAUTH_CLIENT_SECRET` | Yes | Jira OAuth app client secret |
-| `JIRA_AGENT_GITHUB_TOKEN` | No* | GitHub token (*auto-detected from `gh` CLI) |
-| `JIRA_AGENT_DATABRICKS_HOST` | No | Databricks workspace URL |
-| `JIRA_AGENT_DATABRICKS_TOKEN` | No | Databricks personal access token |
-| `JIRA_AGENT_WEBHOOK_SECRET` | No | Secret for webhook signature validation |
-| `JIRA_AGENT_LOG_LEVEL` | No | Logging level (default: INFO) |
-| `JIRA_AGENT_WORKSPACE_DIR` | No | Where repos are cloned (default: /tmp/jira-agent) |
-| `JIRA_AGENT_CLAUDE_MODEL` | No | Claude model (default: claude-opus-4-5-20251101) |
+| `JIRADE_JIRA_OAUTH_CLIENT_ID` | Yes | Jira OAuth app client ID |
+| `JIRADE_JIRA_OAUTH_CLIENT_SECRET` | Yes | Jira OAuth app client secret |
+| `JIRADE_GITHUB_TOKEN` | No* | GitHub token (*auto-detected from `gh` CLI) |
+| `JIRADE_DATABRICKS_HOST` | No | Databricks workspace URL |
+| `JIRADE_DATABRICKS_TOKEN` | No | Databricks personal access token |
+| `JIRADE_WEBHOOK_SECRET` | No | Secret for webhook signature validation |
+| `JIRADE_LOG_LEVEL` | No | Logging level (default: INFO) |
+| `JIRADE_WORKSPACE_DIR` | No | Where repos are cloned (default: /tmp/jirade) |
+| `JIRADE_CLAUDE_MODEL` | No | Claude model (default: claude-opus-4-5-20251101) |
 
 ---
 
@@ -581,7 +581,7 @@ jira-agent auth status
 
 ```bash
 # Re-authenticate
-jira-agent auth login --service=jira
+jirade auth login --service=jira
 ```
 
 If the browser doesn't open, check that `http://localhost:8888/callback` is in your Jira OAuth app's callback URLs.
@@ -593,7 +593,7 @@ If the browser doesn't open, check that `http://localhost:8888/callback` is in y
 gh auth login
 
 # Option 2: Set token manually
-export JIRA_AGENT_GITHUB_TOKEN="ghp_..."
+export JIRADE_GITHUB_TOKEN="ghp_..."
 ```
 
 ### "No accessible Jira resources found"
@@ -610,15 +610,15 @@ Tokens are stored in your system keychain and refresh automatically. If you have
 
 ```bash
 # Logout and re-authenticate
-jira-agent auth logout
-jira-agent auth login
+jirade auth logout
+jirade auth login
 ```
 
 ### Health Check Fails
 
 ```bash
 # Run health check with verbose output
-JIRA_AGENT_LOG_LEVEL=DEBUG jira-agent health --config configs/your-repo.yaml
+JIRADE_LOG_LEVEL=DEBUG jirade health --config configs/your-repo.yaml
 ```
 
 ---
@@ -626,7 +626,7 @@ JIRA_AGENT_LOG_LEVEL=DEBUG jira-agent health --config configs/your-repo.yaml
 ## Architecture
 
 ```
-jira_agent/
+jirade/
 ├── main.py              # CLI entry point
 ├── agent.py             # Core Claude agent orchestration
 ├── config.py            # Global settings (environment variables)

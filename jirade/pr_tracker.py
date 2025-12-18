@@ -10,7 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Default location for PR tracking data
-DEFAULT_TRACKER_PATH = Path.home() / ".jira-agent" / "pr_tracker.json"
+DEFAULT_TRACKER_PATH = Path.home() / ".jirade" / "pr_tracker.json"
 
 
 @dataclass
